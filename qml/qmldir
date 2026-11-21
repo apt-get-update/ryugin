@@ -1,0 +1,5 @@
+singleton Theme 1.0 Theme.qml
+singleton Api 1.0 Api.qml
+singleton Player 1.0 Player.qml
+singleton Nav 1.0 Nav.qml
+singleton Icons 1.0 Icons.qml

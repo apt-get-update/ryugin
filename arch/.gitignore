@@ -1,0 +1,5 @@
+# makepkg build outputs
+/pkg/
+/src/
+/ryugin/
+*.pkg.tar.zst

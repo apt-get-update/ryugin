@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Ryūgin
+Comment=Navidrome player with synced lyrics
+Exec=ryugin
+Icon=ryugin
+Terminal=false
+StartupWMClass=ryugin
+Categories=Audio;Music;AudioVideo;Player;

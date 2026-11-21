@@ -1,0 +1,765 @@
+import QtQuick
+import QtQuick.Controls.Basic as C
+import QtTest
+import "../../qml"
+
+// Clicks through the real components against the mock Navidrome. TestCase itself is not
+// drawn, so the components go into a visible item beside it.
+Item {
+    id: root
+    width: 1280
+    height: 820
+
+TestCase {
+    id: testCase
+    name: "UI"
+    when: windowShown
+
+    Mock { id: mock }
+    SignalSpy { id: openSpy; target: Nav; signalName: "openAlbum" }
+    SignalSpy { id: searchSpy; target: Nav; signalName: "search" }
+
+    function initTestCase() {
+        Qt.application.organization = "ryugin-tests";
+        Qt.application.domain = "tests";
+        mock.connect();
+    }
+    function init() {
+        Player.repeat = "off";
+        Player.bridge = null;
+        Nav.lyrics = false;
+        Nav.queue = false;
+        openSpy.clear();
+        searchSpy.clear();
+    }
+
+    function findChildren(item, name) {
+        let out = item.objectName === name ? [item] : [];
+        for (const c of item.children)
+            out = out.concat(findChildren(c, name));
+        return out;
+    }
+    function create(file, props) {
+        const c = Qt.createComponent(Qt.resolvedUrl("../../qml/" + file));
+        verify(c.status === Component.Ready, file + ": " + c.errorString());
+        const o = createTemporaryObject(c, root, props || {});
+        verify(o !== null, file);
+        return o;
+    }
+    function album() {
+        return { id: "a", title: "Green", artist: "Hiroshi Yoshimura", artistId: "ar1", cover: "c", year: 1986, songCount: 3, duration: 735 };
+    }
+    function albumTracks() {
+        let got = null;
+        Api.getAlbum("a", function (a, t) { got = t; });
+        tryVerify(function () { return got !== null; }, 5000);
+        return got;
+    }
+
+    // ---- Every component builds without errors.
+    function test_component_loads_data() {
+        return ["HomePage.qml", "AlbumsPage.qml", "AlbumPage.qml", "ArtistsPage.qml", "ArtistPage.qml",
+                "PlaylistsPage.qml", "PlaylistPage.qml", "SearchPage.qml", "SettingsPage.qml", "PlayerBar.qml",
+                "NowPlaying.qml", "QueuePanel.qml", "Sidebar.qml", "Header.qml", "TrackList.qml", "AlbumCard.qml",
+                "Shelf.qml", "Scroller.qml", "AlbumGrid.qml", "Cover.qml", "Card.qml", "Field.qml", "Toggle.qml", "TextButton.qml",
+                "IconButton.qml", "Glyph.qml", "GoldSlider.qml", "WhiteSlider.qml", "SectionTitle.qml", "Icon.qml"]
+            .map(function (f) { return { tag: f, file: f }; });
+    }
+    function test_component_loads(d) {
+        const o = create(d.file, { width: 1000, height: 700 });
+        wait(50);
+        verify(o.visible !== undefined);
+    }
+
+    // ---- Every icon name in the QML has an SVG in Icons.qml.
+    function test_icon_is_drawn_at_its_size() {
+        // Qt ignores sourceSize for data: URLs: the SVG must carry its pixel size.
+        const icon = create("Icon.qml", { name: "play-fill", size: 40 });
+        tryCompare(icon.image, "status", Image.Ready);
+        compare(icon.image.implicitWidth, 40 * (Screen.devicePixelRatio || 1));
+        // A new colour (a new song) tints the same picture: no reload, no blink.
+        const src = icon.image.source;
+        icon.color = "#ff0000";
+        compare(icon.image.source, src);
+        compare(icon.image.status, Image.Ready);
+    }
+    function test_icons_exist() {
+        const files = ["AlbumCard", "AlbumPage", "ArtistPage", "ArtistsPage", "Cover", "Header", "HomePage", "Main",
+                       "NowPlaying", "PlayerBar", "PlaylistPage", "SearchPage", "SettingsPage", "Sidebar", "TrackList"];
+        const missing = [];
+        let seen = 0;
+        for (const f of files) {
+            const xhr = new XMLHttpRequest();
+            xhr.open("GET", Qt.resolvedUrl("../../qml/" + f + ".qml"), false);
+            xhr.send();
+            for (const line of xhr.responseText.split("\n")) {
+                const m = line.match(/\b(icon|name)\s*:\s*(.*)$/);
+                if (!m)
+                    continue;
+                for (const lit of m[2].match(/"[a-z0-9-]+"/g) || []) {
+                    const n = lit.slice(1, -1);
+                    if (/^[a-z]+(-[a-z0-9]+)*$/.test(n) && ["home", "albums", "artists", "playlists", "settings", "search", "lyrics", "queue"].indexOf(n) < 0) {
+                        seen++;
+                        if (!Icons.svg[n])
+                            missing.push(f + ": " + n);
+                    }
+                }
+            }
+        }
+        verify(seen > 20, "found only " + seen + " icon names");
+        compare(missing, []);
+    }
+
+    function test_icon_colour_and_alpha() {
+        // The SVG is white; the colour (alpha too) goes to the tint shader.
+        const icon = create("Icon.qml", { name: "star", color: Qt.rgba(1, 0, 0, 0.5) });
+        const svg = decodeURIComponent(icon.image.source.toString());
+        verify(svg.indexOf("#ffffff") > 0, svg);
+        verify(!/#[0-9a-f]{8}/.test(svg), "8-digit colours break the SVG renderer");
+        tryCompare(icon.image, "status", Image.Ready);
+        compare(create("Icon.qml", { name: "no-such-icon" }).image.source.toString(), "");
+    }
+
+    // ---- Album cards: click opens, double-click and ▶ play the whole album.
+    function test_album_card_click_opens_album() {
+        const card = create("AlbumCard.qml", { album: album() });
+        mouseClick(card, 60, 60);
+        openSpy.wait(1000);
+        compare(openSpy.signalArguments[0][0], "a");
+    }
+    function test_album_card_double_click_plays_album() {
+        Player.play([], 0);
+        const card = create("AlbumCard.qml", { album: album() });
+        mouseDoubleClickSequence(card, 60, 60);
+        tryVerify(function () { return Player.queue.length === 3; }, 5000);
+        compare(Player.index, 0);
+        compare(Player.current.title, "Blink");
+        wait(400);
+        compare(openSpy.count, 0, "a double-click must not also open the album");
+    }
+    function test_album_card_play_button() {
+        Player.play([], 0);
+        const card = create("AlbumCard.qml", { album: album() });
+        mouseMove(card, 60, 60);
+        mouseClick(card, card.width - 31, card.width - 31);
+        tryVerify(function () { return Player.queue.length === 3; }, 5000);
+        wait(400);
+        compare(openSpy.count, 0);
+    }
+
+    // ---- Song cards (recently played): a click plays the songs from it, the disc its album.
+    function test_song_card() {
+        const tracks = albumTracks();
+        const songs = [tracks[2], tracks[0]];
+        const card = create("AlbumCard.qml", { song: songs[1], songs: songs });
+        compare(card.children[1].text, tracks[0].title);
+        mouseClick(card, 60, 60);
+        compare(Player.queue.length, 2);
+        compare(Player.current.id, tracks[0].id);
+        const other = create("AlbumCard.qml", { song: tracks[1] });
+        mouseClick(other, other.width - 31, other.width - 31);
+        tryVerify(function () { return Player.queue.length === 3; }, 5000);
+        compare(Player.current.id, tracks[1].id, "the album plays from the song");
+        mouseDoubleClickSequence(other, 60, 60);
+        wait(400);
+        compare(openSpy.count, 0, "a song card never opens the album");
+    }
+    function test_home_recent_songs() {
+        Player.play(albumTracks(), 1);
+        const home = create("HomePage.qml", { width: 1200, height: 800 });
+        const shelf = findChild(home, "recentSongs");
+        verify(shelf.visible);
+        compare(shelf.songs[0].id, Player.current.id);
+    }
+
+    // ---- Covers: one the server cannot resize comes at its original size; none, the ♪.
+    function test_cover_falls_back_to_the_original() {
+        const c = create("Cover.qml", { width: 100, height: 100, coverId: "unresizable" });
+        tryCompare(c, "ready", true, 5000);
+        verify(c.original);
+        c.coverId = "c";
+        verify(!c.original);
+        tryCompare(c, "ready", true, 5000);
+        const none = create("Cover.qml", { width: 100, height: 100 });
+        wait(100);
+        verify(!none.ready);
+    }
+
+    // ---- Scrollbars: shown on the desktop when there is more, never when there is not.
+    function test_scrollbars() {
+        const page = create("AlbumsPage.qml", { width: 400, height: 200 });
+        const bar = findChild(page, "scrollbar");
+        tryVerify(function () { return page.albums.length > 2; }, 5000);
+        tryCompare(bar, "policy", C.ScrollBar.AlwaysOn);
+        Nav.phone = true;
+        compare(bar.policy, C.ScrollBar.AsNeeded, "a phone shows it only while scrolling");
+        Nav.phone = false;
+        const empty = create("Page.qml", { width: 400, height: 600 });
+        compare(findChild(empty, "scrollbar").policy, C.ScrollBar.AlwaysOff);
+    }
+
+    // ---- Track list: a click plays from that track; the star tells the server.
+    function test_track_click_plays_from_there() {
+        const list = create("TrackList.qml", { width: 800, tracks: albumTracks() });
+        waitForRendering(list);
+        mouseClick(list, 300, 76 + 12 + 38); // second card
+        compare(Player.index, 1);
+        compare(Player.current.title, "Creek");
+        compare(Player.queue.length, 3);
+    }
+    function test_track_star() {
+        mock.calls(true);
+        const tracks = albumTracks();
+        const list = create("TrackList.qml", { width: 800, tracks: tracks });
+        waitForRendering(list);
+        mouseClick(list, 800 - 25, 38);
+        tryVerify(function () { return mock.called("star", "id=s0"); }, 5000);
+        verify(list.tracks[0].starred, "the list keeps the new state");
+        mouseClick(list, 800 - 25, 38);
+        verify(!list.tracks[0].starred);
+        tryVerify(function () { return mock.called("unstar", "id=s0"); }, 5000);
+    }
+
+    // ---- Player bar
+    function test_repeat_button_cycles() {
+        const bar = create("PlayerBar.qml", { width: 1280 });
+        const repeat = findChild(bar, "repeat");
+        verify(repeat);
+        mouseClick(repeat);
+        compare(Player.repeat, "all");
+        mouseClick(repeat);
+        compare(Player.repeat, "one");
+        mouseClick(repeat);
+        compare(Player.repeat, "off");
+    }
+
+    // ---- Fullscreen: lyrics only when there are some; the queue takes their place.
+    function test_now_playing_states() {
+        Player.play(albumTracks(), 2); // s2: no lyrics
+        const np = create("NowPlaying.qml", { width: 1280, height: 820 });
+        tryVerify(function () { return Player.lyrics.length === 0; }, 5000);
+        verify(!np.hasLyrics);
+        verify(!np.lyricVisible);
+        verify(np.centered, "without lyrics the cover sits in the middle");
+        Player.lyrics = [{ time: 0, text: "a" }, { time: 1000, text: "b" }];
+        Player.lyricsSynced = true;
+        verify(np.lyricVisible);
+        verify(!np.centered);
+        np.showQueue = true;
+        verify(!np.lyricVisible);
+        verify(!np.centered);
+        np.showQueue = false;
+        np.showLyrics = false;
+        verify(np.centered);
+    }
+
+    // ---- Word-timed lyrics: the line being sung lights up word by word, the others stay plain.
+    function test_lyrics_word_highlight() {
+        const np = create("NowPlaying.qml", { width: 1280, height: 820 });
+        Player.lyrics = Api.lrc("[00:00.00]<00:00.00>布<00:01.00>団 & <00:02.00>\n[00:05.00]<00:05.00>next<00:06.00>");
+        Player.lyricsSynced = true;
+        compare(Player.lyricIndex, 0);
+        const lines = findChild(np, "lyricLines");
+        lines.ms = 500; // half way through the first word, before the second
+        const line = lines.itemAtIndex(0);
+        compare(line.textFormat, Text.StyledText);
+        const alpha = function (html) {
+            return html.match(/color="#(..)/g).map(function (c) { return parseInt(c.slice(-2), 16); });
+        };
+        const a = alpha(line.text);
+        compare(a.length, 2);
+        verify(a[0] > a[1], "the word being sung is brighter than the next: " + a);
+        verify(line.text.indexOf("&amp;") > 0, "text is escaped");
+        lines.ms = 2500;
+        const b = alpha(lines.itemAtIndex(0).text);
+        compare(b[0], b[1]);
+        compare(b[0], Math.round(np.ink.a * 255), "sung words are full ink");
+        tryVerify(function () { return lines.itemAtIndex(1); });
+        compare(lines.itemAtIndex(1).textFormat, Text.PlainText);
+        compare(lines.itemAtIndex(1).text, "next");
+    }
+
+    // ---- Progress: dragging does not fight the song; the seek happens on release.
+    QtObject { id: fakeBridge; objectName: "" }
+    function test_progress_seeks_on_release() {
+        Player.play(albumTracks(), 0);
+        const bar = create("PlayerBar.qml", { width: 1280 });
+        const s = findChild(bar, "progress");
+        verify(s);
+        Player.bridge = fakeBridge;
+        fakeBridge.objectName = "";
+        mousePress(s, s.width * 0.75, s.height / 2);
+        verify(Math.abs(s.value - s.to * 0.75) < s.to * 0.03, "the bar follows the mouse: " + s.value);
+        verify(fakeBridge.objectName === "" || !JSON.parse(fakeBridge.objectName).seeked, "no seek while held");
+        mouseMove(s, s.width * 0.5, s.height / 2);
+        verify(Math.abs(s.value - s.to * 0.5) < s.to * 0.03, "drag: " + s.value);
+        mouseRelease(s, s.width * 0.5, s.height / 2);
+        verify(JSON.parse(fakeBridge.objectName).seeked, "seek on release");
+        Player.bridge = null;
+    }
+
+    // ---- Fullscreen: real previous/next icons, not rewind/forward.
+    function test_now_playing_skip_icons() {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", Qt.resolvedUrl("../../qml/NowPlaying.qml"), false);
+        xhr.send();
+        verify(xhr.responseText.indexOf('"skip-back"') > 0);
+        verify(xhr.responseText.indexOf('"skip-forward"') > 0);
+        verify(xhr.responseText.indexOf("rewind") < 0 && xhr.responseText.indexOf('"forward-fill"') < 0);
+    }
+
+    // ---- Fullscreen: controls show while the mouse moves, and hide when it rests.
+    function test_now_playing_hides_controls() {
+        Player.play(albumTracks(), 2);
+        const np = create("NowPlaying.qml", { width: 1280, height: 820 });
+        mouseMove(np, 300, 300);
+        mouseMove(np, 320, 310);
+        tryCompare(np, "chrome", 1, 1000);
+        tryCompare(np, "chrome", 0, 4000);
+        verify(np.idle);
+        mouseMove(np, 340, 320);
+        tryCompare(np, "chrome", 1, 1000);
+    }
+
+    // ---- Fullscreen: the four layouts, picked from the switcher and remembered.
+    function test_now_playing_layouts() {
+        Player.play(albumTracks(), 0);
+        const np = create("NowPlaying.qml", { width: 1280, height: 820 });
+        const switcher = findChild(np, "switcher");
+        verify(switcher);
+        mouseMove(np, 600, 400); // the bars show
+        mouseMove(np, 610, 410);
+        tryCompare(np, "chrome", 1, 1000);
+        wait(450);
+        mouseClick(findChild(np, "layoutButton"));
+        verify(switcher.open);
+        for (const id of ["fullCover", "fullLyric", "controls", "classic"]) {
+            switcher.open = true;
+            wait(200);
+            mouseClick(findChild(np, "layout-" + id));
+            compare(Player.settings.layout, id);
+            compare(np.layout, id);
+            verify(!switcher.open, "picking closes the switcher");
+            wait(50);
+        }
+        Player.settings.layout = "fullLyric";
+        verify(!np.centered, "the lyric layouts never centre a cover");
+        Player.settings.layout = "classic";
+
+        // The background: SPlayer's still blur or its moving flow.
+        const blur = findChild(np, "blurBackdrop"), flow = findChild(np, "flowBackdrop");
+        switcher.open = true;
+        wait(200);
+        mouseClick(findChild(np, "backdrop-flow"));
+        compare(Player.settings.backdrop, "flow");
+        verify(flow.visible && !blur.visible);
+        verify(switcher.open, "the background is picked without closing");
+        mouseClick(findChild(np, "backdrop-blur"));
+        compare(Player.settings.backdrop, "blur");
+        verify(blur.visible && !flow.visible);
+        switcher.open = false;
+    }
+
+    // ---- Home: the four shelves and the stats come from Navidrome.
+    function test_home_loads_library() {
+        const home = create("HomePage.qml", { width: 1200, height: 800 });
+        // Before Navidrome answers, the rows already hold their place: no jump as they come.
+        const shelves = findChildren(home, "shelf");
+        compare(home.recent, null);
+        verify(shelves.length === 4 && shelves.every(function (s) { return s.visible && s.loading; }), "the rows wait in place");
+        tryVerify(function () { return home.recent && home.recent.length === 4; }, 5000);
+        tryVerify(function () { return home.frequent && home.frequent.length === 4; }, 5000);
+        tryVerify(function () { return home.starred && home.starred.length === 4; }, 5000);
+        tryVerify(function () { return home.newest && home.newest.length === 4; }, 5000);
+        verify(shelves.every(function (s) { return !s.loading; }));
+        tryCompare(home, "songs", 1234, 5000);
+        tryCompare(home, "favorites", 1, 5000);
+    }
+
+    // ---- Search pill: typing searches.
+    function test_header_search() {
+        const header = create("Header.qml", { width: 1200 });
+        const field = findChild(header, "search") || header.children[0].children[2];
+        field.forceActiveFocus();
+        keyClick("y");
+        keyClick("o");
+        tryVerify(function () { return searchSpy.count >= 2; }, 2000);
+        compare(searchSpy.signalArguments[searchSpy.count - 1][0], "yo");
+    }
+
+    // ---- The preferences show the version the build set.
+    function test_settings_version() {
+        Qt.application.version = "9.8.7";
+        const about = findChild(create("SettingsPage.qml", { width: 800, height: 900 }), "about");
+        verify(about.text.indexOf("Ryūgin 龍吟 9.8.7,") === 0, about.text);
+        Qt.application.version = "";
+    }
+
+    // ---- The mouse wheel on the volume: 5 % a notch.
+    function test_volume_wheel() {
+        const w = createTemporaryObject(Qt.createComponent(Qt.resolvedUrl("../../qml/Main.qml")), root);
+        const v = findChild(w.contentItem, "volume");
+        waitForRendering(w.contentItem);
+        Player.setVolume(0.5);
+        mouseWheel(v, v.width / 2, v.height / 2, 0, 120);
+        fuzzyCompare(Player.settings.volume, 0.55, 0.001);
+        mouseWheel(v, v.width / 2, v.height / 2, 0, -240);
+        fuzzyCompare(Player.settings.volume, 0.45, 0.001);
+        Player.setVolume(0.8);
+    }
+
+    // ---- Main window: history, search, Go commands, the tray.
+    // ---- A new scan in Navidrome: the lists reload in place; the same scan, nothing.
+    function test_library_refresh() {
+        const home = create("HomePage.qml", { width: 1200, height: 800 });
+        const albums = create("AlbumsPage.qml", { width: 1200, height: 800 });
+        const artists = create("ArtistsPage.qml", { width: 1200, height: 800 });
+        tryVerify(function () { return home.newest && albums.albums.length > 0 && artists.artists.length > 0; }, 5000);
+        Api.lastScan = "";
+        Api.checkLibrary(); // the mark
+        tryVerify(function () { return Api.lastScan !== ""; }, 5000);
+        mock.calls(true);
+        Api.checkLibrary(); // the same scan
+        wait(300);
+        verify(!mock.called("getAlbumList2") && !mock.called("getArtists"), "no new scan, no reload");
+        mock.scan();
+        Api.checkLibrary();
+        tryVerify(function () { return mock.called("getAlbumList2", "type=newest") && mock.called("getAlbumList2", "alphabeticalByName") && mock.called("getArtists"); }, 5000);
+        verify(home.newest.length > 0 && albums.albums.length > 0, "the old lists stay while the new ones come");
+    }
+
+    // ---- Its menu again: the page is kept (no blink), scrolled to the top; from an album
+    // opened there, back to that same page.
+    function test_menu_again_keeps_the_page() {
+        const w = createTemporaryObject(Qt.createComponent(Qt.resolvedUrl("../../qml/Main.qml")), root, { height: 500 });
+        w.go("home");
+        let greeting = null;
+        tryVerify(function () { greeting = findChild(w.contentItem, "greeting"); return greeting !== null; });
+        let page = greeting;
+        while (page && page.contentY === undefined)
+            page = page.parent;
+        tryVerify(function () { return page.contentHeight > page.height; }, 5000);
+        page.contentY = 300;
+        w.go("home");
+        compare(findChild(w.contentItem, "greeting"), greeting, "the same page, not a new one");
+        tryCompare(page, "contentY", page.originY, 2000, "back to the top");
+        Nav.openAlbum("a");
+        w.go("home");
+        tryCompare(findChild(w.contentItem, "greeting"), "visible", true);
+        compare(findChild(w.contentItem, "greeting"), greeting, "back to the page as it was");
+    }
+
+    // ---- The gear opens Navidrome as a popup; a second click closes it.
+    function test_settings_popup() {
+        const w = createTemporaryObject(Qt.createComponent(Qt.resolvedUrl("../../qml/Main.qml")), root);
+        w.go("albums");
+        w.go("settings");
+        tryVerify(function () { return w.settingsOpen; });
+        compare(w.section, "albums", "the page under the popup stays");
+        w.go("settings");
+        tryVerify(function () { return !w.settingsOpen; }, 1000, "the gear closes it again");
+        w.go("settings");
+        tryVerify(function () { return w.settingsOpen; });
+        w.go("home"); // any page closes it
+        tryVerify(function () { return !w.settingsOpen; });
+        compare(w.section, "home");
+    }
+
+    // ---- Global menu (menu.go) commands reach the window.
+    function test_menu_commands() {
+        const w = createTemporaryObject(Qt.createComponent(Qt.resolvedUrl("../../qml/Main.qml")), root);
+        let n = 0;
+        const send = function (c) { c.n = ++n; w.goCommand = JSON.stringify(c); };
+        send({ cmd: "go", page: "artists" });
+        compare(w.section, "artists");
+        const lyrics = Nav.lyrics, queue = Nav.queue;
+        send({ cmd: "nowPlaying" });
+        compare(Nav.lyrics, !lyrics);
+        send({ cmd: "nowPlaying" });
+        send({ cmd: "queue" });
+        compare(Nav.queue, !queue);
+        send({ cmd: "queue" });
+        send({ cmd: "backdrop", value: "flow" });
+        compare(Player.settings.backdrop, "flow");
+        send({ cmd: "backdrop", value: "blur" });
+        compare(Player.settings.backdrop, "blur");
+        const repeat = Player.repeat;
+        send({ cmd: "repeat" });
+        verify(Player.repeat !== repeat);
+        Player.repeat = repeat;
+        Player.play(albumTracks(), 0);
+        const starred = !!Player.current.starred;
+        send({ cmd: "like" });
+        compare(!!Player.current.starred, !starred);
+        send({ cmd: "like" });
+        send({ cmd: "lucky" });
+        tryVerify(function () { return Player.queue.length > 0 && Player.index === 0; });
+    }
+
+    // ---- The layout popup is frosted glass over what lies behind it.
+    function test_switcher_frost() {
+        const np = create("NowPlaying.qml", { width: 1280, height: 820 });
+        const frost = findChild(np, "frost");
+        verify(frost);
+        verify(frost.blurEnabled && frost.blur > 0);
+        verify(frost.source);
+    }
+
+    // ---- Phone (Sailfish OS): tabs at the bottom, no rail, compact bar, one column, and the
+    // fullscreen player as the cover over its controls with lyrics in its place.
+    function test_phone() {
+        Nav.phone = true;
+        try {
+            const w = createTemporaryObject(Qt.createComponent(Qt.resolvedUrl("../../qml/Main.qml")), root, { width: 432, height: 900 });
+            const tabs = findChild(w.contentItem, "tabs");
+            compare(w.topInset, 36, "upright: room for the notch");
+            const search = findChild(w.contentItem, "search");
+            verify(search.mapToItem(null, 0, 0).y >= 36, "the search field is under the notch's band");
+            verify(search.mapToItem(null, 0, 0).x + search.width <= 432, "the search field fits the screen");
+            verify(tabs.visible && tabs.height > 0);
+            waitForRendering(w.contentItem); // its own window: clicks wait until it is shown
+            mouseClick(findChild(tabs, "tab-albums"));
+            compare(w.section, "albums");
+            let albums = null;
+            tryVerify(function () { albums = findChild(w.contentItem, "albumGrid"); return albums !== null && albums.width > 0; });
+            compare(albums.columns, 2, "two columns of albums, not one and half the width empty");
+            w.width = 354; // the Jolla Phone's width
+            compare(albums.columns, 2, "two columns on the narrowest phone too");
+            compare(albums.cellHeight - albums.card - albums.titles, albums.cellWidth - albums.card, "the same gap between rows as between cards");
+            // On its side: the pages move to a rail at the left.
+            w.width = 900;
+            w.height = 432;
+            const rail = findChild(w.contentItem, "sidebar");
+            tryVerify(function () { return !tabs.visible && rail.visible && rail.width > 0; }, 1000, "a rail, no tabs");
+            tryVerify(function () { return albums.columns >= 4; }, 1000, "more columns on its side");
+            w.width = 432;
+            w.height = 900;
+            tryVerify(function () { return tabs.visible && !rail.visible; }, 1000, "upright: tabs again");
+            mouseClick(findChild(tabs, "tab-settings"));
+            tryVerify(function () { return w.settingsOpen; });
+            w.go("home");
+            const greeting = findChild(w.contentItem, "greeting"), stats = findChild(w.contentItem, "stats");
+            tryVerify(function () { return greeting && stats && stats.width > 0; });
+            const g = greeting.mapToItem(null, 0, 0), st = stats.mapToItem(null, 0, 0);
+            verify(st.y >= g.y + greeting.height, "the stats sit under the greeting, not on it");
+            verify(st.x + stats.width <= 432, "the stats fit the screen");
+
+            const np = create("NowPlaying.qml", { width: 432, height: 900, topInset: 36 });
+            verify(findChild(np, "lyricLines").mapToItem(np, 0, 0).y >= 36, "nothing under the notch");
+            compare(np.layout, "controls");
+            verify(!np.showLyrics, "a phone opens on the cover");
+            compare(np.chrome, 1, "no hover on a phone: the buttons stay");
+            verify(!findChild(np, "layoutButton").visible);
+            Player.lyrics = [{ time: 0, text: "a" }];
+            Player.lyricsSynced = true;
+            np.showLyrics = true;
+            verify(np.lyricVisible);
+            const lines = findChild(np, "lyricLines");
+            const p = lines.mapToItem(np, 0, 0);
+            verify(p.x >= 0 && p.x + lines.width <= np.width, "lyrics fit the screen");
+            verify(findChild(np, "lyricsToggle").visible, "a button shows the lyrics");
+            // Minimized on Sailfish OS: the card shows the song, big.
+            const card = findChild(w.contentItem, "coverMode");
+            verify(!card.visible);
+            Nav.covered = true;
+            const open = Nav.lyrics;
+            Nav.lyrics = true;
+            verify(!card.visible, "the fullscreen player stays as it is in the card");
+            Nav.lyrics = false;
+            verify(card.visible);
+            // All of it in the card's view: the window's top, 0.62 wide for 1 high.
+            const col = findChild(card, "coverColumn");
+            const view = Math.min(card.height, card.width / 0.62);
+            verify(col.y > 0 && col.y + col.height < view, "the card cuts the song: " + col.y + " " + col.height + " " + view);
+            compare(Math.round(col.y), Math.round(view - col.y - col.height), "centred in the card");
+            Nav.covered = false;
+            Nav.lyrics = open;
+            // The playlist takes the cover's place: one fades out, then the other in.
+            np.showLyrics = false;
+            const ctl = findChild(np, "controlsGrid").parent, list = findChild(np, "queuePanel");
+            tryCompare(ctl, "opacity", 1);
+            for (const open of [true, false]) {
+                np.showQueue = open;
+                for (let t = 0; t < 600; t += 20) {
+                    verify(ctl.opacity === 0 || list.opacity === 0, "cover and playlist both shown: " + open + " " + t + " " + ctl.opacity + " " + list.opacity);
+                    wait(20);
+                }
+                compare(list.opacity, open ? 1 : 0);
+                compare(ctl.opacity, open ? 0 : 1);
+            }
+
+            // On its side: the cover beside its controls, inside the screen; the queue has room.
+            w.width = 900; w.height = 400; // the phone turns
+            tryCompare(w, "topInset", 0); // on its side the system keeps the notch's band
+            const side = create("NowPlaying.qml", { width: 900, height: 400 });
+            verify(side.wide);
+            const box = findChild(side, "controlsCoverBox"), grid = findChild(side, "controlsGrid");
+            const b = box.mapToItem(side, 0, 0), gp = grid.mapToItem(side, 0, 0);
+            verify(b.y >= 0 && b.y + box.height <= side.height, "the cover fits the height");
+            verify(gp.x >= 0 && gp.x + grid.width <= side.width, "cover and controls fit the width");
+            const q = findChild(side, "queuePanel");
+            verify(q.height >= side.height - 40, "the queue takes the screen's height");
+        } finally {
+            Nav.phone = false;
+        }
+    }
+
+    // A double tap on the cover opens the playlist; pulling down from above the cover closes.
+    function test_now_playing_gestures() {
+        Nav.phone = true;
+        try {
+            Player.queue = [{ id: "s0", title: "a", artist: "b", album: "c", albumId: "a", artistId: "ar1", cover: "" }];
+            const np = create("NowPlaying.qml", { width: 432, height: 900, topInset: 36 });
+            Nav.lyrics = true;
+            waitForRendering(np);
+            const cb = findChild(np, "controlsCoverBox");
+            mouseClick(cb);
+            verify(!np.showQueue, "one tap is not enough");
+            mouseClick(cb);
+            tryVerify(function () { return np.showQueue; }, 2000, "a double tap opens the playlist");
+            np.showQueue = false;
+            const zone = findChild(np, "pullZone");
+            verify(zone.height > 100, "the space above the cover pulls");
+            // A slow pull: 60 px over 0.6 s.
+            const x = np.width / 2, y = zone.height - 20;
+            mousePress(zone, x, y);
+            for (let d = 4; d <= 60; d += 4) {
+                mouseMove(zone, x, y + d, 40);
+                verify(np.pull <= d - 4, "no jump by the drag threshold: " + np.pull + " at " + d);
+            }
+            verify(np.pull > 0 && np.pull <= 60, "follows the finger: " + np.pull);
+            mouseRelease(zone, x, y + 60);
+            verify(Nav.lyrics, "a short slow pull springs back");
+            compare(np.pull, 0);
+            mouseDrag(zone, x, y, 0, 300);
+            verify(!Nav.lyrics, "a long pull closes");
+            Nav.lyrics = true;
+            tryCompare(np, "y", 0);
+            mouseDrag(zone, x, y, 0, 80); // fast
+            verify(!Nav.lyrics, "a flick down closes");
+        } finally {
+            Nav.phone = false;
+            Nav.lyrics = false;
+            Player.queue = [];
+        }
+    }
+
+    // The Sailfish OS card with nothing playing: the last song played, else the app's icon.
+    function test_cover_card_idle() {
+        const queue = Player.queue, history = Player.history;
+        Player.queue = [];
+        Player.history = [{ id: "h", title: "Last one", artist: "A", album: "B", cover: "c" }];
+        const card = createTemporaryObject(Qt.createComponent(Qt.resolvedUrl("../../qml/CoverMode.qml")), root, { width: 400, height: 800 });
+        compare(findChild(card, "coverTitle").text, "Last one");
+        compare(findChild(card, "coverNext").text, "Last played");
+        verify(!findChild(card, "coverIcon").visible);
+        Player.history = [];
+        verify(findChild(card, "coverIcon").visible, "no song yet: the app's icon");
+        compare(findChild(card, "coverTitle").text, "Ryūgin 龍吟");
+        Player.queue = queue;
+        Player.history = history;
+    }
+
+    // Sailfish's ways on a phone: swipe right to go back, remorse.
+    function test_phone_sailfish_ways() {
+        Nav.phone = true;
+        try {
+            const w = createTemporaryObject(Qt.createComponent(Qt.resolvedUrl("../../qml/Main.qml")), root, { width: 432, height: 900 });
+            const stack = findChild(w.contentItem, "stack");
+            waitForRendering(w.contentItem);
+
+            // Swipe right: back; a short swipe springs back.
+            w.open("AlbumPage.qml", { albumId: "a" });
+            compare(stack.depth, 2);
+            tryCompare(stack, "busy", false);
+            const swipe = function (dx) {
+                mousePress(stack, 40, 500);
+                for (let d = 10; d <= dx; d += 10)
+                    mouseMove(stack, 40 + d, 500, 15);
+                mouseRelease(stack, 40 + dx, 500);
+            };
+            swipe(60);
+            compare(stack.depth, 2);
+            tryCompare(stack.currentItem, "x", 0);
+            swipe(250);
+            tryCompare(stack, "depth", 1);
+
+            // The bin clears after a few seconds; a tap on its bar cancels.
+            Player.queue = [{ id: "s1", title: "A", artist: "B", album: "C", albumId: "c", artistId: "b", cover: "", duration: 100 },
+                            { id: "s2", title: "D", artist: "B", album: "C", albumId: "c", artistId: "b", cover: "", duration: 100 }];
+            const np = create("NowPlaying.qml", { width: 432, height: 900 });
+            np.showQueue = true;
+            const bar = findChild(np, "remorse");
+            tryCompare(findChild(np, "queuePanel"), "opacity", 1);
+            mouseClick(findChild(np, "clearQueue"));
+            verify(bar.visible);
+            compare(Player.queue.length, 2, "not at once");
+            mouseClick(bar);
+            verify(!bar.visible);
+            wait(4500);
+            compare(Player.queue.length, 2, "cancelled");
+            mouseClick(findChild(np, "clearQueue"));
+            tryVerify(function () { return Player.queue.length === 0; }, 6000, "cleared after the remorse");
+        } finally {
+            Nav.phone = false;
+            Player.queue = [];
+        }
+    }
+
+    function test_main_window() {
+        const c = Qt.createComponent(Qt.resolvedUrl("../../qml/Main.qml"));
+        verify(c.status === Component.Ready, c.errorString());
+        const w = createTemporaryObject(c, root);
+        verify(w);
+        const stack = findChild(w.contentItem, "stack");
+        verify(stack);
+        compare(findChild(w, "benchStats").running, false, "no --bench: no frame log");
+
+        w.go("albums");
+        compare(w.section, "albums");
+        compare(stack.depth, 1);
+        w.open("AlbumPage.qml", { albumId: "a" });
+        compare(stack.depth, 2);
+        w.back();
+        compare(stack.depth, 1);
+        compare(w.ahead.length, 1);
+        w.forward();
+        compare(stack.depth, 2);
+        compare(w.ahead.length, 0);
+        w.back();
+        w.back(); // nothing left: stays
+        compare(stack.depth, 1);
+
+        Nav.search("yoshi");
+        compare(stack.currentItem.objectName, "search");
+        compare(stack.currentItem.query, "yoshi");
+        const depth = stack.depth;
+        Nav.search("hiro"); // same page, new query
+        compare(stack.depth, depth);
+        compare(stack.currentItem.query, "hiro");
+        Nav.search(""); // cleared: back to the page before
+        compare(stack.depth, depth - 1);
+        verify(stack.currentItem.objectName !== "search");
+        Nav.search(""); // not on the search page: nothing happens
+        compare(stack.depth, depth - 1);
+
+        Player.play(albumTracks(), 0);
+        w.goCommand = JSON.stringify({ cmd: "next", n: 1 });
+        compare(Player.index, 1);
+        w.goCommand = JSON.stringify({ cmd: "coverColor", color: "#3060c0", url: "http://elsewhere", n: 2 });
+        verify(Theme.seed !== Qt.color("#3060c0"), "a colour for another cover is ignored");
+        w.goCommand = JSON.stringify({ cmd: "coverColor", color: "#3060c0", url: Api.cover(Player.current.cover, 128), n: 3 });
+        compare(Theme.seed, Qt.color("#3060c0"));
+        w.goCommand = JSON.stringify({ cmd: "coverColor", color: "#3060c0", wash: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGMUUDBgYGBgYmBgYGBgAAAEigBkY8dNNAAAAABJRU5ErkJggg==", url: Api.cover(Player.current.cover, 128), n: 6 });
+        verify(Theme.wash.startsWith("data:image/png"));
+
+        w.hasTray = true;
+        w.close();
+        verify(!w.visible, "with a tray, closing hides");
+        w.goCommand = JSON.stringify({ cmd: "toggleWindow", n: 4 });
+        verify(w.visible);
+        w.goCommand = JSON.stringify({ cmd: "toggleWindow", n: 5 });
+        verify(!w.visible);
+    }
+}
+}

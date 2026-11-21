@@ -1,0 +1,7 @@
+/ryugin
+/RPMS/
+/.sysroot/
+/.sysroot.tar
+/documentation.list
+/.rpmbuild/
+/tests/phone/

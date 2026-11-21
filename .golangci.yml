@@ -1,0 +1,20 @@
+# Code quality gate (tests/run.sh): golangci-lint's defaults (errcheck, govet, staticcheck,
+# unused...) plus small, simple functions.
+version: "2"
+linters:
+  enable: [gocyclo, gocognit, funlen, dupl, misspell, unparam, nakedret, gocritic]
+  settings:
+    gocyclo: {min-complexity: 10}
+    gocognit: {min-complexity: 20}
+    funlen: {lines: 60, statements: 40}
+    errcheck:
+      # Best effort, by design: nothing to do when they fail.
+      exclude-functions: [os.Setenv, os.MkdirAll, os.Rename, (io.Closer).Close, (*os/exec.Cmd).Wait]
+  exclusions:
+    rules:
+      # Tests: long scenarios, errors that the next check catches.
+      - path: (_test\.go|tests/)
+        linters: [errcheck, funlen, gocognit, gocyclo, dupl]
+      # D-Bus methods: godbus needs the *dbus.Error result, nil or not.
+      - path: mpris\.go
+        linters: [unparam]

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Ryūgin
+Comment=Navidrome player with synced lyrics
+Icon=ryugin
+Exec=qt-runner /usr/bin/ryugin
+X-Nemo-Application-Type=no-invoker
+X-Nemo-Single-Instance=no
+
+[X-Sailjail]
+Sandboxing=Disabled
