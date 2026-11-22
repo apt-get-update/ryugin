@@ -306,4 +306,66 @@ TestCase {
         verify(heart.liked, "the heart fills");
         compare(told, ["s0", true], "the lists are told");
     }
+
+    // ---- The last run's queue: back at start, paused, not told to MPRIS until played.
+    function lastRun(at) {
+        Player.clear();
+        Player.settings.queue = JSON.stringify(tracks(4));
+        Player.settings.original = "";
+        Player.settings.index = 2;
+        Player.settings.position = at;
+        Player.settings.server = Api.settings.url;
+        Player.restore();
+    }
+    function test_restore_the_last_run() {
+        Player.play(tracks(3), 1);
+        compare(JSON.parse(Player.settings.queue).length, 3, "the queue is kept");
+        compare(Player.settings.index, 1);
+        lastRun(42000);
+        verify(Player.restored);
+        compare(Player.current.id, "s2");
+        compare(Player.position, 42000, "where it stopped");
+        verify(!Player.playing);
+        compare(Player.media.source.toString(), "", "nothing loaded");
+    }
+    function test_restored_keeps_the_cover_split() {
+        lastRun(5000);
+        Player.bridge = fakeBridge;
+        Player.report(true, false);
+        const s = JSON.parse(fakeBridge.objectName);
+        verify(s.track === undefined, "no song for MPRIS yet: the cover shows the albums");
+        verify(Array.isArray(s.recentArt));
+        Player.bridge = null;
+    }
+    function test_play_resumes_the_restored_song() {
+        mock.calls(true);
+        lastRun(30000);
+        Player.command({ cmd: "play" }); // the cover's play button
+        verify(!Player.restored);
+        compare(Player.current.id, "s2");
+        compare(Player.resumeAt, 30000, "from where it stopped");
+        verify(Player.media.source.toString().indexOf("id=s2") > 0);
+        wait(200);
+        verify(!mock.called("getRandomSongs"), "not random songs");
+    }
+    function test_seek_while_restored() {
+        lastRun(30000);
+        Player.seek(10000);
+        compare(Player.position, 10000);
+        verify(Player.restored, "still not loaded");
+    }
+    function test_no_restore_from_another_server() {
+        Player.clear();
+        Player.settings.queue = JSON.stringify(tracks(4));
+        Player.settings.index = 1;
+        Player.settings.server = "https://other.example";
+        Player.restore();
+        verify(!Player.restored);
+        compare(Player.current, null);
+    }
+    function test_repeat_is_kept() {
+        Player.repeat = "one";
+        compare(Player.settings.repeat, "one");
+        Player.repeat = "off";
+    }
 }

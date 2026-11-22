@@ -16,7 +16,8 @@ QtObject {
     property int index: -1
     readonly property var current: index >= 0 && index < queue.length ? queue[index] : null
     readonly property bool playing: media.playbackState === MediaPlayer.PlayingState
-    readonly property int position: media.position
+    // Restored (the last run's song, not played yet): its saved position.
+    readonly property int position: restored ? settings.position : media.position
     // The position in whole seconds: what a progress bar shows on a phone. Qt moves position
     // every ~100 ms, and each change redrew the whole window (10 frames a second).
     readonly property int seconds: Math.floor(position / 1000) * 1000
@@ -37,7 +38,13 @@ QtObject {
         return i;
     }
 
-    property string repeat: "off" // off, all, one
+    property string repeat: settings.repeat // off, all, one
+    onRepeatChanged: settings.repeat = repeat
+    // The last run's queue is back and its song shows, paused, but is not loaded (nothing
+    // downloads) nor told to MPRIS: Sailfish OS's cover keeps its album split, and play
+    // resumes that song where it stopped (SPlayer-Next restores the same).
+    property bool restored: false
+    property int resumeAt: 0 // ms: where the restored song starts once loaded
     // Shuffle on: the queue as it was before, to put back when it goes off (SPlayer-Next).
     property var original: null
     property bool scrobbled: false
@@ -57,6 +64,14 @@ QtObject {
         property bool shuffle: false // shuffle mode, as SPlayer-Next: kept between runs
         property bool cache: true // songs played whole are kept on disk (stream.go)
         property real cacheLimit: 2 // GB of songs; covers have no limit
+        // The queue, for the next run (JSON), its order before shuffle ("": none), the
+        // song in it, where it was (ms, saved every 10 s and on pause), and its server.
+        property string queue: "[]"
+        property string original: ""
+        property int index: -1
+        property int position: 0
+        property string server: ""
+        property string repeat: "off"
     }
     readonly property Prefs settings: Prefs {}
     // The last 20 songs played, newest first: Navidrome only keeps recent albums.
@@ -73,14 +88,50 @@ QtObject {
     }
     readonly property MediaPlayer media: MediaPlayer {
         audioOutput: p.output
-        onMediaStatusChanged: if (mediaStatus === MediaPlayer.EndOfMedia) p.ended()
-        onPlaybackStateChanged: p.report(false, false)
+        onMediaStatusChanged: {
+            if (mediaStatus === MediaPlayer.EndOfMedia)
+                p.ended();
+            else if (p.resumeAt > 0 && (mediaStatus === MediaPlayer.LoadedMedia || mediaStatus === MediaPlayer.BufferedMedia)) {
+                setPosition(p.resumeAt);
+                p.resumeAt = 0;
+            }
+        }
+        onPlaybackStateChanged: {
+            if (playbackState === MediaPlayer.PausedState)
+                p.settings.position = position;
+            p.report(false, false);
+        }
         onPositionChanged: p.tick()
         onDurationChanged: p.albumLyrics()
         // A FLAC's cover is a video stream to FFmpeg: decoding it crashed Sailfish's
         // graphics driver ("invalid handle"). Audio only.
         onErrorOccurred: p.going = false
         onTracksChanged: if (activeVideoTrack !== -1) activeVideoTrack = -1
+    }
+
+    // The queue, kept for the next run as it changes.
+    onQueueChanged: settings.queue = JSON.stringify(queue)
+    onOriginalChanged: settings.original = original ? JSON.stringify(original) : ""
+    onIndexChanged: settings.index = index
+    Component.onCompleted: restore()
+    // The last run's queue and song, when it was on this server.
+    function restore() {
+        let q = [];
+        try {
+            q = JSON.parse(settings.queue);
+        } catch (e) {}
+        if (!Array.isArray(q) || settings.index < 0 || settings.index >= q.length || settings.server !== Api.settings.url)
+            return;
+        let o = null;
+        try {
+            o = settings.original ? JSON.parse(settings.original) : null;
+        } catch (e) {}
+        const at = settings.position;
+        queue = q;
+        original = o;
+        index = settings.index;
+        settings.position = at;
+        restored = true;
     }
 
     // Play list from song i. Shuffle on: from i (a random one when none is given) and the
@@ -159,6 +210,7 @@ QtObject {
         going = false;
         media.stop();
         media.source = "";
+        restored = false;
         queue = [];
         original = null;
         index = -1;
@@ -172,6 +224,9 @@ QtObject {
     function load() {
         if (!current)
             return;
+        restored = false;
+        settings.server = Api.settings.url;
+        settings.position = resumeAt;
         going = true;
         media.source = Api.stream(current.id);
         media.play();
@@ -259,12 +314,19 @@ QtObject {
     function toggle() {
         if (playing)
             media.pause();
-        else if (media.source.toString() === "")
+        else if (media.source.toString() === "") {
+            if (restored) // where it stopped last time
+                resumeAt = settings.position;
             load();
+        }
         else
             media.play();
     }
     function seek(ms) {
+        if (restored) { // not loaded: where it will start
+            settings.position = Math.max(0, Math.min(ms, duration));
+            return;
+        }
         media.position = Math.max(0, Math.min(ms, duration));
         report(false, true);
     }
@@ -300,6 +362,8 @@ QtObject {
         }
         if (Math.abs(position - lastReport) >= 1000)
             report(false, false);
+        if (playing && Math.abs(position - settings.position) >= 10000)
+            settings.position = position;
     }
 
     // State for MPRIS, through Go (times in microseconds).
@@ -319,7 +383,7 @@ QtObject {
         };
         if (withTrack)
             state.recentArt = recentArt();
-        if (withTrack && current)
+        if (withTrack && current && !restored) // restored: not yet, the cover keeps its split
             state.track = {
                 id: current.id, title: current.title, artist: current.artist, album: current.album,
                 art: Api.cover(current.cover, 512), length: current.duration * 1000000
@@ -356,7 +420,7 @@ QtObject {
     // Commands from MPRIS.
     function command(c) {
         switch (c.cmd) {
-        case "play": // nothing queued (a headset, the lock screen): 50 random songs
+        case "play": // nothing queued nor restored (a headset, the lock screen): 50 random songs
         case "playPause":
             if (!current)
                 Api.randomSongs(50, function (l) { p.play(l, 0); });

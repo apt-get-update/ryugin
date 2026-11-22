@@ -10,7 +10,7 @@ Rectangle {
     color: Theme.bg
     // Nothing playing: the last song played, else the app's icon.
     readonly property var t: Player.current || (Player.history.length ? Player.history[0] : null)
-    readonly property bool idle: !Player.current
+    readonly property bool idle: !Player.current || Player.restored
     readonly property var next: Player.index + 1 < Player.queue.length ? Player.queue[Player.index + 1] : null
     readonly property real box: Math.min(height, width / 0.62) // what the card shows
 
