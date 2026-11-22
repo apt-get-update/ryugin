@@ -416,7 +416,7 @@ Rectangle {
                         width: parent.width
                         height: view.height * 0.075
                         readonly property real big: Math.max(28, view.height * 0.05)
-                        Glyph { name: "shuffle"; size: parent.big * 0.5; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.shuffleRest() }
+                        Glyph { name: Player.settings.shuffle ? "shuffle" : "play-order"; size: parent.big * 0.5; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.toggleShuffle() }
                         Row {
                             anchors.centerIn: parent
                             spacing: parent.width * 0.09
@@ -938,7 +938,7 @@ Rectangle {
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 12
-                Btn { icon: "shuffle"; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.shuffleRest() }
+                Btn { icon: Player.settings.shuffle ? "shuffle" : "play-order"; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.toggleShuffle() }
                 Btn { icon: "skip-back"; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.previous() }
                 Btn { icon: Player.playing ? "pause" : "play"; secondary: true; size: 44; iconSize: 22; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.toggle() }
                 Btn { icon: "skip-forward"; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.next() }

@@ -114,19 +114,54 @@ TestCase {
         compare(Player.index, 0);
     }
 
-    function test_shuffle_keeps_every_track() {
-        Player.shuffle(tracks(20));
-        compare(Player.queue.length, 20);
-        compare(Player.queue.map(function (t) { return t.id; }).sort().join(), tracks(20).map(function (t) { return t.id; }).sort().join());
-    }
+    function ids() { return Player.queue.map(function (t) { return t.id; }).join(); }
 
-    function test_shuffle_rest_keeps_the_head() {
+    // ---- Shuffle, as SPlayer-Next: a mode, off by default.
+    function test_shuffle_off_by_default() {
+        compare(Player.settings.shuffle, false);
+        Player.play(tracks(5), 2);
+        compare(ids(), "s0,s1,s2,s3,s4", "off: the list's order");
+        compare(Player.index, 2);
+    }
+    function test_shuffle_on_then_off() {
         Player.play(tracks(20), 4);
-        Player.shuffleRest();
-        compare(Player.index, 4);
-        for (let i = 0; i <= 4; i++)
-            compare(Player.queue[i].id, "s" + i);
-        compare(Player.queue.length, 20);
+        Player.toggleShuffle();
+        verify(Player.settings.shuffle);
+        compare(Player.index, 0, "the playing song first");
+        compare(Player.current.id, "s4");
+        compare(Player.queue.map(function (t) { return t.id; }).sort().join(), tracks(20).map(function (t) { return t.id; }).sort().join(), "every song kept");
+        Player.next();
+        const id = Player.current.id;
+        Player.toggleShuffle();
+        verify(!Player.settings.shuffle);
+        compare(ids(), tracks(20).map(function (t) { return t.id; }).join(), "off: the order back");
+        compare(Player.current.id, id, "at the playing song");
+    }
+    function test_shuffle_buttons_turn_it_on() {
+        try {
+            Player.shuffle(tracks(20));
+            verify(Player.settings.shuffle);
+            compare(Player.queue.length, 20);
+            Player.play(tracks(20), 7); // a song picked in a list: it plays first, the rest mixed
+            compare(Player.current.id, "s7");
+            compare(Player.index, 0);
+        } finally {
+            Player.toggleShuffle();
+        }
+    }
+    function test_shuffle_new_order_on_repeat() {
+        Player.repeat = "all";
+        Player.play(tracks(3), 0);
+        Player.toggleShuffle();
+        try {
+            Player.jump(2);
+            const last = Player.current.id;
+            Player.next(); // the end: again, in a new order
+            compare(Player.index, 1);
+            compare(Player.queue[0].id, last, "the last song not again at once");
+        } finally {
+            Player.toggleShuffle();
+        }
     }
 
     function test_enqueue() {

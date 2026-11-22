@@ -51,7 +51,7 @@ func newMenuBar(send func(map[string]any)) *qt.QMenuBar {
 		item{},
 		item{"Like / unlike", cmd("like")},
 		item{"Repeat: off, all, one", cmd("repeat")},
-		item{"Shuffle the queue", cmd("shuffle")},
+		item{"Shuffle on / off", cmd("shuffle")},
 		item{},
 		item{"Feeling lucky", cmd("lucky")})
 	fill(bar.AddMenuWithTitle("View"), send,

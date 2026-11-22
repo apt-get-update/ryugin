@@ -38,6 +38,8 @@ QtObject {
     }
 
     property string repeat: "off" // off, all, one
+    // Shuffle on: the queue as it was before, to put back when it goes off (SPlayer-Next).
+    property var original: null
     property bool scrobbled: false
     // A song is meant to play: between two songs the player is stopped for a moment, which
     // is no stop for MPRIS (Sailfish OS's cover then flashed its idle album grid).
@@ -52,6 +54,7 @@ QtObject {
         property string backdrop: "blur" // fullscreen background: blur (static) or flow (moving)
         property bool tags: false // fullscreen: the song's tags (Streaming, Lossless, Lrc)
         property string history: "[]" // the last songs played, newest first (JSON)
+        property bool shuffle: false // shuffle mode, as SPlayer-Next: kept between runs
         property bool cache: true // songs played whole are kept on disk (stream.go)
         property real cacheLimit: 10 // GB, as SPlayer
     }
@@ -80,21 +83,52 @@ QtObject {
         onTracksChanged: if (activeVideoTrack !== -1) activeVideoTrack = -1
     }
 
+    // Play list from song i. Shuffle on: from i (a random one when none is given) and the
+    // rest in a random order, as SPlayer-Next.
     function play(list, i) {
+        original = null;
         queue = list.slice();
-        index = i || 0;
+        index = i === undefined ? (settings.shuffle ? Math.floor(Math.random() * list.length) : 0) : i;
+        if (settings.shuffle)
+            mix(index);
         load();
     }
+    // The Shuffle buttons (album, playlist, artist): shuffle on, then play.
     function shuffle(list) {
-        const l = list.slice();
-        for (let i = l.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [l[i], l[j]] = [l[j], l[i]];
+        settings.shuffle = true;
+        play(list);
+    }
+    // Song i first, the others in a random order; the order before is kept to put back.
+    function mix(i) {
+        if (queue.length === 0)
+            return;
+        if (!original)
+            original = queue.slice();
+        const rest = queue.filter(function (t, k) { return k !== i; });
+        for (let k = rest.length - 1; k > 0; k--) {
+            const j = Math.floor(Math.random() * (k + 1));
+            [rest[k], rest[j]] = [rest[j], rest[k]];
         }
-        play(l, 0);
+        queue = [queue[i]].concat(rest);
+        index = 0;
+    }
+    // The shuffle button: on mixes the queue (the playing song first), off puts its order
+    // back, at the playing song.
+    function toggleShuffle() {
+        settings.shuffle = !settings.shuffle;
+        if (settings.shuffle) {
+            mix(Math.max(index, 0));
+        } else if (original) {
+            const id = current ? current.id : "";
+            queue = original;
+            original = null;
+            index = Math.max(0, queue.findIndex(function (t) { return t.id === id; }));
+        }
     }
     function enqueue(list) {
         queue = queue.concat(list);
+        if (original)
+            original = original.concat(list);
         if (index < 0)
             play(queue, 0);
     }
@@ -104,8 +138,10 @@ QtObject {
             return;
         const playing = i === index;
         const q = queue.slice();
-        q.splice(i, 1);
+        const gone = q.splice(i, 1)[0];
         queue = q;
+        if (original)
+            original = original.filter(function (t) { return t !== gone; });
         if (i < index)
             index--;
         else if (playing) {
@@ -124,6 +160,7 @@ QtObject {
         media.stop();
         media.source = "";
         queue = [];
+        original = null;
         index = -1;
         lyrics = [];
     }
@@ -198,6 +235,10 @@ QtObject {
             load();
         } else if (repeat === "all" && queue.length > 0) {
             index = 0;
+            if (settings.shuffle && queue.length > 1) { // a new order; the last song not again at once
+                mix(queue.length - 1);
+                index = 1;
+            }
             load();
         } else {
             going = false;
@@ -206,15 +247,6 @@ QtObject {
     }
     function cycleRepeat() {
         repeat = repeat === "off" ? "all" : repeat === "all" ? "one" : "off";
-    }
-    // Shuffle what comes after the current track.
-    function shuffleRest() {
-        const head = queue.slice(0, index + 1), rest = queue.slice(index + 1);
-        for (let i = rest.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [rest[i], rest[j]] = [rest[j], rest[i]];
-        }
-        queue = head.concat(rest);
     }
     function previous() {
         if (position > 3000 || index <= 0)
@@ -252,8 +284,11 @@ QtObject {
     function setStarred(id, on) {
         // New objects: a binding on current (the heart) sees the change.
         // A track list may have changed the shared object already: check the id only.
+        const mark = function (t) { return t.id === id ? Object.assign({}, t, { starred: on }) : t; };
         if (queue.some(function (t) { return t.id === id; }))
-            queue = queue.map(function (t) { return t.id === id ? Object.assign({}, t, { starred: on }) : t; });
+            queue = queue.map(mark);
+        if (original)
+            original = original.map(mark);
         Api.star(id, on);
         liked(id, on);
     }
@@ -337,7 +372,7 @@ QtObject {
         case "volume": setVolume(c.value); break;
         case "like": toggleStar(); break;
         case "repeat": cycleRepeat(); break;
-        case "shuffle": shuffleRest(); break;
+        case "shuffle": toggleShuffle(); break;
         case "lucky": Api.randomSongs(50, function (l) { play(l, 0); }); break;
         }
     }

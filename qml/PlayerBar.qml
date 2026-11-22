@@ -17,7 +17,7 @@ Rectangle {
         width: visible ? implicitWidth : 0
         anchors.verticalCenter: parent.verticalCenter
         spacing: 6
-        IconButton { icon: "shuffle"; iconSize: 17; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.shuffleRest() }
+        IconButton { objectName: "shuffle"; icon: Player.settings.shuffle ? "shuffle" : "play-order"; active: Player.settings.shuffle; iconSize: 17; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.toggleShuffle() }
         IconButton { icon: "skip-back"; iconSize: 19; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.previous() }
         Rectangle {
             width: 44
