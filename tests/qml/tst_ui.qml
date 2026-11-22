@@ -395,7 +395,7 @@ TestCase {
         Qt.application.version = "";
     }
 
-    // ---- The song cache: off hides its size; the size reads in MB, then GB.
+    // ---- The cache: songs off hides their size, not the covers; sizes read in MB, then GB.
     function test_settings_cache() {
         const page = create("SettingsPage.qml", { width: 800, height: 900 });
         const toggle = findChild(page, "cacheToggle");
@@ -405,10 +405,10 @@ TestCase {
             mouseClick(toggle);
             verify(!Player.settings.cache);
             verify(!limit.visible, "off: no size");
-            page.showUsed(5 << 20);
-            compare(page.size(page.used), "5 MB");
-            compare(page.size(3 * 1024 * 1024 * 1024), "3.0 GB");
+            page.showUsed({ songs: 5 << 20, covers: 3 * 1024 * 1024 * 1024 });
             compare(findChild(page, "cacheSize").desc, "5 MB used");
+            compare(findChild(page, "coverCache").desc, "3.0 GB used · every album's, kept offline");
+            verify(findChild(page, "coverCache").visible, "covers: always kept");
         } finally {
             Player.settings.cache = true;
         }

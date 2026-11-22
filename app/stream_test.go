@@ -107,9 +107,10 @@ func TestSongCache(t *testing.T) {
 		body, _ := io.ReadAll(res.Body)
 		return res.StatusCode, body
 	}
+	songs := filepath.Join(dir, "songs")
 	cached := func(id string) bool {
 		for range 100 {
-			if _, err := os.Stat(filepath.Join(dir, id)); err == nil {
+			if _, err := os.Stat(filepath.Join(songs, id)); err == nil {
 				return true
 			}
 			time.Sleep(20 * time.Millisecond)
@@ -123,7 +124,7 @@ func TestSongCache(t *testing.T) {
 	if !cached("s1") || !cached("s2") {
 		t.Fatal("not cached")
 	}
-	if entries, _ := os.ReadDir(dir); len(entries) != 2 {
+	if entries, _ := os.ReadDir(songs); len(entries) != 2 {
 		t.Error("only s1 and s2 are cached, not a part or a bad id:", entries)
 	}
 
@@ -146,7 +147,7 @@ func TestSongCacheDropped(t *testing.T) {
 		{-1, filepath.Join(dir, "cut"), 1},      // size unknown, not read to the end
 	} {
 		f, _ := os.CreateTemp(dir, ".part-*")
-		body := &caching{ReadCloser: io.NopCloser(strings.NewReader("abc")), f: f, total: c.total, path: c.path, cache: &songCache{dir: dir}}
+		body := &caching{ReadCloser: io.NopCloser(strings.NewReader("abc")), f: f, total: c.total, path: c.path, cache: &store{dir: dir}}
 		if c.read == 3 {
 			io.ReadAll(body)
 		} else {
@@ -208,29 +209,34 @@ func TestSongCacheControl(t *testing.T) {
 		res.Body.Close()
 		time.Sleep(100 * time.Millisecond) // the copy is renamed after the answer
 	}
-	old := filepath.Join(dir, "old")
+	songs, covers := filepath.Join(dir, "songs"), filepath.Join(dir, "covers")
+	os.WriteFile(filepath.Join(covers, "cover.360.a"), []byte("jpeg"), 0o644)
+	old := filepath.Join(songs, "old")
 	os.WriteFile(old, song, 0o644)
 	os.Chtimes(old, time.Now().Add(-time.Hour), time.Now().Add(-time.Hour))
 
 	size("on=0")
 	play("old") // off: not played from the cache (the server answers)
 	play("s1")
-	if _, err := os.Stat(filepath.Join(dir, "s1")); err == nil {
+	if _, err := os.Stat(filepath.Join(songs, "s1")); err == nil {
 		t.Error("off, a song is saved")
 	}
 	size("on=1")
 	play("s1")
-	if got := size(""); got != `{"size":28000}` {
+	if got := size(""); got != `{"songs":28000,"covers":4}` {
 		t.Error("two songs:", got)
 	}
-	if got := size("limit=0.00002"); got != `{"size":14000}` { // 21 KB: the newest song left
+	if got := size("limit=0.00002"); got != `{"songs":14000,"covers":4}` { // 21 KB: the newest song left
 		t.Error("smaller:", got)
 	}
 	if _, err := os.Stat(old); err == nil {
 		t.Error("the oldest song is kept")
 	}
-	if got := size("clear=1"); got != `{"size":0}` {
-		t.Error("cleared:", got)
+	if got := size("clear=songs"); got != `{"songs":0,"covers":4}` {
+		t.Error("songs cleared, covers kept:", got)
+	}
+	if got := size("clear=covers"); got != `{"songs":0,"covers":0}` {
+		t.Error("covers cleared:", got)
 	}
 }
 
@@ -263,12 +269,12 @@ func TestCoverCache(t *testing.T) {
 	get("id=al-1_0&size=300")
 	get("id=al-1_0&size=../x") // not a plain size: not cached
 	for range 100 {
-		if _, err := os.Stat(filepath.Join(dir, "cover.300.al-1_0")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "covers", "cover.300.al-1_0")); err == nil {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+	if entries, _ := os.ReadDir(filepath.Join(dir, "covers")); len(entries) != 1 {
 		t.Fatal("one cover cached:", entries)
 	}
 	navidrome.Close()
@@ -277,7 +283,7 @@ func TestCoverCache(t *testing.T) {
 	}
 }
 
-// Covers fetched ahead: the ones missing, one at a time; not songs, not when off.
+// Covers fetched ahead: the ones missing, one at a time; not songs; also with songs off.
 func TestCoverPrefetch(t *testing.T) {
 	var asked []string
 	var mu sync.Mutex
@@ -289,11 +295,12 @@ func TestCoverPrefetch(t *testing.T) {
 	}))
 	defer navidrome.Close()
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "cover.360.have"), []byte("jpeg have"), 0o644)
 	prefix, err := streamProxy(nil, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	covers := filepath.Join(dir, "covers")
+	os.WriteFile(filepath.Join(covers, "cover.360.have"), []byte("jpeg have"), 0o644)
 	base := strings.TrimSuffix(prefix, "?u=")
 	post := func(list ...string) {
 		res, err := http.Post(base+"prefetch", "text/plain", strings.NewReader(strings.Join(list, "\n")))
@@ -304,7 +311,7 @@ func TestCoverPrefetch(t *testing.T) {
 	}
 	done := func(n int) bool {
 		for range 100 {
-			if entries, _ := os.ReadDir(dir); len(entries) == n {
+			if entries, _ := os.ReadDir(covers); len(entries) == n {
 				return true
 			}
 			time.Sleep(20 * time.Millisecond)
@@ -323,15 +330,14 @@ func TestCoverPrefetch(t *testing.T) {
 		t.Error("asked:", asked)
 	}
 	mu.Unlock()
-	if b, _ := os.ReadFile(filepath.Join(dir, "cover.360.a2")); string(b) != "jpeg a2" {
+	if b, _ := os.ReadFile(filepath.Join(covers, "cover.360.a2")); string(b) != "jpeg a2" {
 		t.Errorf("a2: %q", b)
 	}
 
-	http.Get(base + "cache?on=0")
+	http.Get(base + "cache?on=0") // the songs' switch: covers are always kept
 	time.Sleep(100 * time.Millisecond)
 	post(cover("a3"))
-	time.Sleep(200 * time.Millisecond)
-	if _, err := os.Stat(filepath.Join(dir, "cover.360.a3")); err == nil {
-		t.Error("off, a cover is fetched")
+	if !done(4) {
+		t.Error("songs off, a cover is not fetched")
 	}
 }

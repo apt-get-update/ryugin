@@ -12,8 +12,10 @@ Item {
     // leaves little outside to tap.
     signal closeRequested()
     // The bytes the song cache holds, -1 until Go answers.
-    property real used: -1
-    function showUsed(bytes) { page.used = bytes; }
+    // The bytes the cache holds: { songs, covers }; null until Go answers.
+    property var used: null
+    function showUsed(sizes) { page.used = sizes; }
+    function usedText(kind) { return page.used ? page.size(page.used[kind]) + " used" : ""; }
     function size(bytes) {
         return bytes < 1 << 30 ? Math.round(bytes / (1 << 20)) + " MB" : (bytes / (1 << 30)).toFixed(1) + " GB";
     }
@@ -136,8 +138,8 @@ Item {
 
                 Heading { text: "Cache" }
                 Option {
-                    title: "Keep songs and covers"
-                    desc: "Songs played to the end and album covers load from disk, also offline"
+                    title: "Keep songs"
+                    desc: "Songs played to the end play again from disk, also offline"
                     Toggle {
                         objectName: "cacheToggle"
                         checked: Player.settings.cache
@@ -147,8 +149,8 @@ Item {
                 Option {
                     objectName: "cacheSize"
                     visible: Player.settings.cache
-                    title: "Size"
-                    desc: page.used < 0 ? "" : page.size(page.used) + " used"
+                    title: "Songs"
+                    desc: page.usedText("songs")
                     Field {
                         objectName: "cacheLimit"
                         width: 84
@@ -160,7 +162,25 @@ Item {
                         onEditingFinished: { Player.settings.cacheLimit = Number(text); Api.cache({ limit: text }, page.showUsed); }
                         Text { anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; text: "GB"; color: Theme.faint; font.pixelSize: 13 }
                     }
-                    IconButton { objectName: "cacheClear"; icon: "trash-2"; iconSize: 18; filled: true; onClicked: Api.cache({ clear: 1 }, page.showUsed) }
+                    IconButton {
+                        objectName: "cacheClear"
+                        icon: "trash-2"
+                        iconSize: 18
+                        filled: true
+                        onClicked: Api.cache({ clear: "songs" }, page.showUsed)
+                    }
+                }
+                Option {
+                    objectName: "coverCache"
+                    title: "Covers"
+                    desc: page.usedText("covers") + (page.used ? " · " : "") + "every album's, kept offline"
+                    IconButton {
+                        objectName: "coverClear"
+                        icon: "trash-2"
+                        iconSize: 18
+                        filled: true
+                        onClicked: Api.cache({ clear: "covers" }, page.showUsed)
+                    }
                 }
 
                 Rectangle { width: parent.width; height: 1; color: Theme.border }

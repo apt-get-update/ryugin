@@ -353,10 +353,10 @@ ApplicationWindow {
         }
     }
 
-    // A minute after start (the first page is in), every album's cover into the cache.
+    // Just after start (the first page's covers come first), every album's cover into the cache.
     Timer {
         id: prefetch
-        interval: 60000
+        interval: 5000
         onTriggered: if (Player.settings.cache && Api.configured) Api.prefetchCovers()
     }
 

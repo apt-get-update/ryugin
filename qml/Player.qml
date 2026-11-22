@@ -56,7 +56,7 @@ QtObject {
         property string history: "[]" // the last songs played, newest first (JSON)
         property bool shuffle: false // shuffle mode, as SPlayer-Next: kept between runs
         property bool cache: true // songs played whole are kept on disk (stream.go)
-        property real cacheLimit: 10 // GB, as SPlayer
+        property real cacheLimit: 2 // GB of songs; covers have no limit
     }
     readonly property Prefs settings: Prefs {}
     // The last 20 songs played, newest first: Navidrome only keeps recent albums.

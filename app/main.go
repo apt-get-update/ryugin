@@ -155,9 +155,7 @@ func loadQML(dir string) (*qt.QObject, *qt.QObject) {
 	engine.RootContext().SetContextProperty("goBridge", bridge)
 	// Streams through Go (stream.go): Sailfish OS's https, and the song cache.
 	cache, _ := os.UserCacheDir()
-	songs := filepath.Join(cache, appID, "songs")
-	os.MkdirAll(songs, 0o755)
-	if prefix, err := streamProxy(nil, songs); err == nil {
+	if prefix, err := streamProxy(nil, filepath.Join(cache, appID)); err == nil {
 		engine.RootContext().SetContextProperty2("goStreamProxy", qt.NewQVariant14(prefix))
 	}
 	engine.LoadWithFilePath(filepath.Join(dir, "Main.qml"))

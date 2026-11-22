@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -17,39 +19,65 @@ import (
 	"unicode"
 )
 
-// songCacheLimit: the cache's default size, as SPlayer's (10 GB). The files played
-// longest ago go first.
-const songCacheLimit = 10 << 30
+// songCacheLimit: the song cache's default size (2 GB; the settings change it). The songs
+// played longest ago go first. Covers have no limit: a whole library's take a few MB.
+const songCacheLimit = 2 << 30
 
-// songCache: the songs and covers fetched whole, in dir (cacheKey names them). The
-// settings page turns it off (nothing saved nor served from it) and sets its size.
-type songCache struct {
-	dir      string
-	off      atomic.Bool
-	limit    atomic.Int64
-	client   *http.Client // Navidrome, for the covers fetched ahead
-	fetching atomic.Bool
+// store: files fetched whole, in dir (cacheKey names them); past limit, the ones used
+// longest ago go. Off (the songs' switch), nothing is saved in it nor served from it.
+type store struct {
+	dir   string
+	off   atomic.Bool
+	limit atomic.Int64
 }
 
-// streamProxy serves Navidrome's streams over plain http on 127.0.0.1, on every platform:
-// Sailfish OS needs it (Chum's FFmpeg has no https), and it keeps the song cache in dir.
-// QML asks for prefix + the escaped stream or cover URL; Range passes through, so seeking
-// works. Only Subsonic stream and getCoverArt URLs go through. A song or cover fetched
-// whole is saved in dir; the next time it comes from there, with no server. prefix without "?u=" + "cache" is the cache's
-// settings (cache.control). rt is the transport (nil: the default).
+func newStore(dir string, limit int64) *store {
+	_ = os.MkdirAll(dir, 0o755)
+	s := &store{dir: dir}
+	s.limit.Store(limit)
+	return s
+}
+
+// relay: the cache behind Go's relay, songs and covers apart, and the covers fetched ahead.
+type relay struct {
+	songs, covers *store
+	client        *http.Client // Navidrome, for the covers fetched ahead
+	fetching      atomic.Bool
+}
+
+// storeFor is where u's file goes: covers or songs.
+func (c *relay) storeFor(u *url.URL) *store {
+	if isCover(u) {
+		return c.covers
+	}
+	return c.songs
+}
+
+func isCover(u *url.URL) bool { return strings.HasSuffix(u.Path, "/rest/getCoverArt") }
+
+// streamProxy serves Navidrome's streams and covers over plain http on 127.0.0.1, on every
+// platform: Sailfish OS needs it (Chum's FFmpeg has no https), and it keeps the cache in
+// dir/songs and dir/covers. QML asks for prefix + the escaped stream or cover URL; Range
+// passes through, so seeking works. Only Subsonic stream and getCoverArt URLs go through.
+// A song or cover fetched whole is saved; the next time it comes from there, with no
+// server. prefix without "?u=", + "cache": the settings (control); + "prefetch": the
+// covers to fetch ahead. rt is the transport (nil: the default).
 func streamProxy(rt http.RoundTripper, dir string) (prefix string, err error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return "", err
 	}
-	cache := &songCache{dir: dir, client: &http.Client{Transport: rt, Timeout: time.Minute}}
-	cache.limit.Store(songCacheLimit)
+	cache := &relay{
+		songs:  newStore(filepath.Join(dir, "songs"), songCacheLimit),
+		covers: newStore(filepath.Join(dir, "covers"), math.MaxInt64),
+		client: &http.Client{Transport: rt, Timeout: time.Minute},
+	}
 	target := func(r *http.Request) *url.URL { return relayable(r.URL.Query().Get("u")) }
 	proxy := &httputil.ReverseProxy{Transport: rt, Rewrite: func(r *httputil.ProxyRequest) {
 		r.Out.URL = target(r.In)
 		r.Out.Host = ""
 	}, ModifyResponse: func(res *http.Response) error {
-		cache.save(res)
+		cache.storeFor(res.Request.URL).save(res)
 		return nil
 	}}
 	serve := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +94,7 @@ func streamProxy(rt http.RoundTripper, dir string) (prefix string, err error) {
 			http.Error(w, "not a stream", http.StatusBadRequest)
 			return
 		}
-		if !cache.serve(w, r, cacheKey(u)) {
+		if !cache.storeFor(u).serve(w, r, cacheKey(u)) {
 			proxy.ServeHTTP(w, r)
 		}
 	})
@@ -89,55 +117,65 @@ func relayable(s string) *url.URL {
 // prefetch fetches the covers the cache lacks, in the background and one at a time: one
 // getCoverArt URL a line in the request's body (QML: Api.prefetchCovers). A list sent while
 // one is being fetched is dropped.
-func (c *songCache) prefetch(w http.ResponseWriter, r *http.Request) {
+func (c *relay) prefetch(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	if c.fetching.CompareAndSwap(false, true) {
 		go func() {
 			defer c.fetching.Store(false)
-			for _, s := range strings.Fields(string(body)) {
-				c.fetch(s)
+			list, n := strings.Fields(string(body)), 0
+			log.Printf("covers ahead: %d albums", len(list))
+			for _, s := range list {
+				n += c.fetch(s)
 			}
+			log.Printf("covers ahead: %d fetched, the others were there", n)
 		}()
 	}
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// fetch saves the cover at s, unless s is not a cover, the cache is off or has it.
-func (c *songCache) fetch(s string) {
+// fetch saves the cover at s, unless s is not a cover or the cache has it. It returns 1
+// when it asked Navidrome, else 0.
+func (c *relay) fetch(s string) int {
 	u := relayable(s)
-	if u == nil || c.off.Load() || !strings.HasSuffix(u.Path, "/rest/getCoverArt") {
-		return
+	if u == nil || !isCover(u) {
+		return 0
 	}
-	if _, err := os.Stat(filepath.Join(c.dir, cacheKey(u))); err == nil {
-		return // there (or no plain key: dir itself)
+	if _, err := os.Stat(filepath.Join(c.covers.dir, cacheKey(u))); err == nil {
+		return 0 // there (or no plain key: dir itself)
 	}
 	res, err := c.client.Get(s)
 	if err != nil {
-		return
+		log.Println("covers ahead:", err)
+		return 0
 	}
-	c.save(res)
+	c.covers.save(res)
 	_, _ = io.Copy(io.Discard, res.Body)
 	_ = res.Body.Close()
+	return 1
 }
 
-// control applies the settings page's choices, all optional: on (1 or 0), limit (GB),
-// clear (1). It answers the cache's size in bytes: {"size": n}.
-func (c *songCache) control(w http.ResponseWriter, r *http.Request) {
+// control applies the settings page's choices, all optional: on (1 or 0: the songs),
+// limit (GB, the songs), clear (songs or covers). It answers the bytes each holds:
+// {"songs": n, "covers": n}.
+func (c *relay) control(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if on := q.Get("on"); on != "" {
-		c.off.Store(on == "0")
+		c.songs.off.Store(on == "0")
 	}
 	if gb, err := strconv.ParseFloat(q.Get("limit"), 64); err == nil && gb > 0 {
-		c.limit.Store(int64(gb * (1 << 30)))
+		c.songs.limit.Store(int64(gb * (1 << 30)))
 	}
-	if q.Get("clear") == "1" {
-		trim(c.dir, 0)
+	switch q.Get("clear") {
+	case "songs":
+		trim(c.songs.dir, 0)
+	case "covers":
+		trim(c.covers.dir, 0)
 	}
-	_, _ = fmt.Fprintf(w, `{"size":%d}`, trim(c.dir, c.limit.Load()))
+	_, _ = fmt.Fprintf(w, `{"songs":%d,"covers":%d}`, trim(c.songs.dir, c.songs.limit.Load()), trim(c.covers.dir, c.covers.limit.Load()))
 }
 
-// save copies res to the cache as the player reads it, when it brings the whole song.
-func (c *songCache) save(res *http.Response) {
+// save copies res to the store as the player reads it, when it brings the whole file.
+func (c *store) save(res *http.Response) {
 	if id, total := cacheKey(res.Request.URL), whole(res); !c.off.Load() && id != "" && total != 0 {
 		if f, err := os.CreateTemp(c.dir, ".part-*"); err == nil {
 			res.Body = &caching{ReadCloser: res.Body, f: f, total: total, path: filepath.Join(c.dir, id), cache: c}
@@ -145,8 +183,8 @@ func (c *songCache) save(res *http.Response) {
 	}
 }
 
-// serve plays the song with this id from the cache, if it is there.
-func (c *songCache) serve(w http.ResponseWriter, r *http.Request, id string) bool {
+// serve answers with the file of this id from the store, if it is there.
+func (c *store) serve(w http.ResponseWriter, r *http.Request, id string) bool {
 	if c.off.Load() || id == "" {
 		return false
 	}
@@ -209,7 +247,7 @@ type caching struct {
 	n, total int64
 	end, bad bool // read to the end; a write failed
 	path     string
-	cache    *songCache
+	cache    *store
 }
 
 func (c *caching) Read(p []byte) (int, error) {
@@ -232,7 +270,7 @@ func (c *caching) Close() error {
 	return err
 }
 
-// trim deletes the songs played longest ago until dir holds at most limit bytes, and
+// trim deletes the files used longest ago until dir holds at most limit bytes, and
 // returns what it holds then.
 func trim(dir string, limit int64) int64 {
 	entries, _ := os.ReadDir(dir)

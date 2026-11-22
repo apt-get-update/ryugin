@@ -92,8 +92,9 @@ QtObject {
         return streamProxy !== "" ? streamProxy + encodeURIComponent(u) : u;
     }
     property string streamProxy: ""
-    // The song cache (Go, stream.go), when Go's relay runs. params, all optional: on (1 or
-    // 0), limit (GB), clear (1). cb(bytes the cache holds).
+    // The cache (Go, stream.go), when Go's relay runs. params, all optional: on (1 or 0,
+    // the songs), limit (GB, the songs), clear ("songs" or "covers"). cb({ songs, covers }:
+    // the bytes each holds).
     function cache(params, cb) {
         if (streamProxy === "")
             return;
@@ -106,7 +107,7 @@ QtObject {
                 r = JSON.parse(xhr.responseText);
             } catch (e) {}
             if (r && cb)
-                cb(r.size);
+                cb(r);
         };
         let q = "";
         for (const k in params)
