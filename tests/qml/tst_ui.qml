@@ -395,6 +395,36 @@ TestCase {
         Qt.application.version = "";
     }
 
+    // ---- The song cache: off hides its size; the size reads in MB, then GB.
+    function test_settings_cache() {
+        const page = create("SettingsPage.qml", { width: 800, height: 900 });
+        const toggle = findChild(page, "cacheToggle");
+        const limit = findChild(page, "cacheLimit");
+        try {
+            verify(toggle.checked && limit.visible);
+            mouseClick(toggle);
+            verify(!Player.settings.cache);
+            verify(!limit.visible, "off: no size");
+            page.showUsed(5 << 20);
+            compare(page.size(page.used), "5 MB");
+            compare(page.size(3 * 1024 * 1024 * 1024), "3.0 GB");
+            compare(findChild(page, "cacheSize").desc, "5 MB used");
+        } finally {
+            Player.settings.cache = true;
+        }
+    }
+
+    // ---- The close button: the phone's way out of the settings.
+    function test_settings_close() {
+        const page = create("SettingsPage.qml", { width: 800, height: 900 });
+        let closed = false;
+        page.closeRequested.connect(function () { closed = true; });
+        const x = findChild(page, "settingsClose");
+        verify(x.visible, "a server is set: it can close");
+        mouseClick(x);
+        verify(closed);
+    }
+
     // ---- The mouse wheel on the volume: 5 % a notch.
     function test_volume_wheel() {
         const w = createTemporaryObject(Qt.createComponent(Qt.resolvedUrl("../../qml/Main.qml")), root);

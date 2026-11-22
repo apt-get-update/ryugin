@@ -34,11 +34,11 @@ TestCase {
         verify(Api.cover("c", 100).indexOf("getCoverArt?") > 0);
         verify(Api.cover("c", 100).indexOf("size=100") > 0);
         verify(Api.stream("s0").indexOf("stream?") > 0);
-        // Sailfish OS: an https stream goes through Go's relay; plain http does not need it.
+        // Every stream goes through Go's relay (the song cache; https on Sailfish OS).
         const url = Api.settings.url;
         try {
             Api.streamProxy = "http://127.0.0.1:9/?u=";
-            compare(Api.stream("s0").indexOf("http://127.0.0.1:"), 0, "the mock is plain http: straight");
+            compare(Api.stream("s0").indexOf("http://127.0.0.1:9/?u=http%3A%2F%2F127.0.0.1"), 0, "plain http too");
             Api.settings.url = "https://music.example";
             const s = Api.stream("s0");
             compare(s.indexOf("http://127.0.0.1:9/?u=https%3A%2F%2Fmusic.example%2Frest%2Fstream%3F"), 0, s);

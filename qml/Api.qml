@@ -70,11 +70,33 @@ QtObject {
         // size 0: the original picture.
         return id ? url("getCoverArt", { id: id, size: size === 0 ? undefined : size || 300 }) : "";
     }
-    // Sailfish OS: Go relays https streams over plain http (Main.qml sets it).
+    // Go's relay (stream.go, set by Main.qml): the song cache, and plain http for Sailfish OS.
     property string streamProxy: ""
+    // The song cache (Go, stream.go), when Go's relay runs. params, all optional: on (1 or
+    // 0), limit (GB), clear (1). cb(bytes the cache holds).
+    function cache(params, cb) {
+        if (streamProxy === "")
+            return;
+        const xhr = new XMLHttpRequest();
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState !== XMLHttpRequest.DONE)
+                return;
+            let r = null;
+            try {
+                r = JSON.parse(xhr.responseText);
+            } catch (e) {}
+            if (r && cb)
+                cb(r.size);
+        };
+        let q = "";
+        for (const k in params)
+            q += "&" + k + "=" + encodeURIComponent(params[k]);
+        xhr.open("GET", streamProxy.replace("?u=", "cache?") + q.slice(1));
+        xhr.send();
+    }
     function stream(id) {
         const u = url("stream", { id: id, format: "raw", estimateContentLength: true }); // raw: seekable
-        return streamProxy !== "" && u.indexOf("https:") === 0 ? streamProxy + encodeURIComponent(u) : u;
+        return streamProxy !== "" ? streamProxy + encodeURIComponent(u) : u;
     }
 
     function track(s) {

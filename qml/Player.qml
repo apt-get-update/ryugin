@@ -52,6 +52,8 @@ QtObject {
         property string backdrop: "blur" // fullscreen background: blur (static) or flow (moving)
         property bool tags: false // fullscreen: the song's tags (Streaming, Lossless, Lrc)
         property string history: "[]" // the last songs played, newest first (JSON)
+        property bool cache: true // songs played whole are kept on disk (stream.go)
+        property real cacheLimit: 10 // GB, as SPlayer
     }
     readonly property Prefs settings: Prefs {}
     // The last 20 songs played, newest first: Navidrome only keeps recent albums.
