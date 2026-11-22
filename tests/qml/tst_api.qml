@@ -124,7 +124,27 @@ TestCase {
     }
 
     function test_all_albums() {
+        Api.known.albums = "";
         compare(result(function (cb) { Api.allAlbums(cb); })[0].length, 4);
+    }
+    // The list known comes at once (no wait, no jump), and stays when Navidrome is gone.
+    function test_all_albums_known_first() {
+        Api.known.albums = "";
+        result(function (cb) { Api.allAlbums(cb); });
+        let got = null;
+        Api.allAlbums(function (l) { got = l; });
+        verify(got !== null && got.length === 4, "at once");
+        const url = Api.settings.url;
+        try {
+            Api.settings.url = "http://127.0.0.1:9";
+            got = null;
+            Api.allAlbums(function (l) { got = l; });
+            compare(got.length, 4);
+            wait(300);
+            compare(got.length, 4, "offline: the last list stays");
+        } finally {
+            Api.settings.url = url;
+        }
     }
 
     function test_lyrics_synced() {

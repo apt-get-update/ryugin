@@ -16,6 +16,12 @@ QtObject {
         property string salt: ""
     }
     readonly property Prefs settings: Prefs {}
+    // What Navidrome last said, shown at once next time (and offline): allAlbums' list.
+    component Known: Settings {
+        category: "library"
+        property string albums: "" // JSON; "" not known yet
+    }
+    readonly property Known known: Known {}
     readonly property bool configured: settings.url !== "" && settings.user !== "" && settings.token !== ""
     property bool online: false
     property string error: ""
@@ -28,6 +34,7 @@ QtObject {
         settings.user = user.trim();
         settings.salt = salt;
         settings.token = Qt.md5(password + salt);
+        known.albums = ""; // maybe another server
         get("ping", {}, cb);
     }
 
@@ -148,16 +155,29 @@ QtObject {
         });
     }
 
+    // Every album, by name. The last list known comes first, at once (no wait, no jump,
+    // also offline), then Navidrome's, only when it differs.
     function allAlbums(cb) {
+        if (known.albums !== "")
+            cb(JSON.parse(known.albums));
         const all = [];
         const page = function (offset) {
-            albumList("alphabeticalByName", 500, offset, function (list) {
+            get("getAlbumList2", { type: "alphabeticalByName", size: 500, offset: offset }, function (e, r) {
+                if (e) { // no answer: the last list stays
+                    if (known.albums === "")
+                        cb([]);
+                    return;
+                }
+                const list = ((r.albumList2 && r.albumList2.album) || []).map(album);
                 for (const a of list)
                     all.push(a);
                 if (list.length === 500)
-                    page(offset + 500);
-                else
+                    return page(offset + 500);
+                const json = JSON.stringify(all);
+                if (json !== known.albums) {
+                    known.albums = json;
                     cb(all);
+                }
             });
         };
         page(0);
