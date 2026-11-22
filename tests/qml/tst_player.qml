@@ -368,4 +368,29 @@ TestCase {
         compare(Player.settings.repeat, "one");
         Player.repeat = "off";
     }
+
+    // ---- MPRIS: shuffle and repeat as shell widgets and playerctl see and set them.
+    function test_mpris_shuffle_and_loop() {
+        Player.bridge = fakeBridge;
+        try {
+            Player.repeat = "one";
+            compare(JSON.parse(fakeBridge.objectName).loop, "Track");
+            Player.toggleShuffle();
+            compare(JSON.parse(fakeBridge.objectName).shuffle, true);
+            Player.command({ cmd: "setShuffle", value: false });
+            verify(!Player.settings.shuffle);
+            Player.command({ cmd: "setShuffle", value: false }); // already off: no change
+            verify(!Player.settings.shuffle);
+            Player.command({ cmd: "setLoop", value: "Playlist" });
+            compare(Player.repeat, "all");
+            Player.command({ cmd: "setLoop", value: "Bogus" });
+            compare(Player.repeat, "all", "unknown: left as it was");
+            Player.command({ cmd: "setLoop", value: "None" });
+            compare(Player.repeat, "off");
+            compare(JSON.parse(fakeBridge.objectName).loop, "None");
+        } finally {
+            Player.bridge = null;
+            Player.repeat = "off";
+        }
+    }
 }

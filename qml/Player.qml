@@ -39,7 +39,10 @@ QtObject {
     }
 
     property string repeat: settings.repeat // off, all, one
-    onRepeatChanged: settings.repeat = repeat
+    onRepeatChanged: {
+        settings.repeat = repeat;
+        report(false, false);
+    }
     // The last run's queue is back and its song shows, paused, but is not loaded (nothing
     // downloads) nor told to MPRIS: Sailfish OS's cover keeps its album split, and play
     // resumes that song where it stopped (SPlayer-Next restores the same).
@@ -167,6 +170,7 @@ QtObject {
     // back, at the playing song.
     function toggleShuffle() {
         settings.shuffle = !settings.shuffle;
+        report(false, false);
         if (settings.shuffle) {
             mix(Math.max(index, 0));
         } else if (original) {
@@ -376,6 +380,8 @@ QtObject {
             // (a pause said "Playing", and MPRIS, the lock screen, kept showing ||).
             status: media.playbackState === MediaPlayer.StoppedState && going ? "Playing" : ["Stopped", "Playing", "Paused"][media.playbackState],
             canPlay: Api.configured, // not connected yet: nothing to play
+            shuffle: settings.shuffle,
+            loop: ({ off: "None", all: "Playlist", one: "Track" })[repeat],
             position: position * 1000,
             volume: settings.volume,
             seeked: seeked,
@@ -437,6 +443,9 @@ QtObject {
         case "like": toggleStar(); break;
         case "repeat": cycleRepeat(); break;
         case "shuffle": toggleShuffle(); break;
+        // From MPRIS: shell widgets, playerctl.
+        case "setShuffle": if (c.value !== settings.shuffle) toggleShuffle(); break;
+        case "setLoop": repeat = ({ None: "off", Playlist: "all", Track: "one" })[c.value] || repeat; break;
         case "lucky": Api.randomSongs(50, function (l) { play(l, 0); }); break;
         }
     }

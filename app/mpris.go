@@ -30,6 +30,8 @@ type playerState struct {
 	// The covers of the last albums played (with the track), for qt-runner's cover.
 	RecentArt []string `json:"recentArt"`
 	CanPlay   *bool    `json:"canPlay"` // false until connected to Navidrome
+	Shuffle   *bool    `json:"shuffle"`
+	Loop      string   `json:"loop"` // the repeat mode as MPRIS says it: None, Playlist, Track
 }
 
 type track = struct {
@@ -130,10 +132,17 @@ func newMpris(conn *dbus.Conn, send func(map[string]any)) (*mpris, error) {
 		},
 		playerIface: {
 			"PlaybackStatus": ro("Stopped"),
-			"LoopStatus":     ro("None"),
-			"Rate":           ro(1.0),
-			"Shuffle":        ro(false),
-			"Metadata":       ro(map[string]dbus.Variant{}),
+			// Repeat and shuffle: shown and set by shell widgets and playerctl too.
+			"LoopStatus": {Value: "None", Writable: true, Emit: prop.EmitTrue, Callback: func(c *prop.Change) *dbus.Error {
+				m.send(map[string]any{"cmd": "setLoop", "value": c.Value})
+				return nil
+			}},
+			"Rate": ro(1.0),
+			"Shuffle": {Value: false, Writable: true, Emit: prop.EmitTrue, Callback: func(c *prop.Change) *dbus.Error {
+				m.send(map[string]any{"cmd": "setShuffle", "value": c.Value})
+				return nil
+			}},
+			"Metadata": ro(map[string]dbus.Variant{}),
 			"Volume": {Value: 1.0, Writable: true, Emit: prop.EmitTrue, Callback: func(c *prop.Change) *dbus.Error {
 				m.send(map[string]any{"cmd": "volume", "value": c.Value})
 				return nil
@@ -181,13 +190,8 @@ func (m *mpris) update(s playerState) {
 	if s.Status != "" {
 		m.set("PlaybackStatus", s.Status)
 	}
-	if s.CanPlay != nil {
-		m.set("CanPlay", *s.CanPlay)
-	}
+	m.modes(s)
 	m.props.SetMust(playerIface, "Position", s.Position)
-	if s.Volume > 0 {
-		m.set("Volume", s.Volume)
-	}
 	if s.Track != nil || s.RecentArt != nil { // QML sends them only when they change
 		if s.Track != nil {
 			m.track = s.Track
@@ -199,6 +203,22 @@ func (m *mpris) update(s playerState) {
 	}
 	if s.Seeked {
 		_ = m.conn.Emit(objPath, playerIface+".Seeked", s.Position)
+	}
+}
+
+// modes sets what changes only now and then: can play, shuffle, repeat, volume (0: left).
+func (m *mpris) modes(s playerState) {
+	if s.CanPlay != nil {
+		m.set("CanPlay", *s.CanPlay)
+	}
+	if s.Shuffle != nil {
+		m.set("Shuffle", *s.Shuffle)
+	}
+	if s.Loop != "" {
+		m.set("LoopStatus", s.Loop)
+	}
+	if s.Volume > 0 {
+		m.set("Volume", s.Volume)
 	}
 }
 
