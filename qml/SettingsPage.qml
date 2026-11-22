@@ -134,10 +134,10 @@ Item {
                     Toggle { objectName: "tagsToggle"; checked: Player.settings.tags; onToggled: function (on) { Player.settings.tags = on; } }
                 }
 
-                Heading { text: "Song cache" }
+                Heading { text: "Cache" }
                 Option {
-                    title: "Cache songs"
-                    desc: "Songs played to the end play again from disk, also offline"
+                    title: "Keep songs and covers"
+                    desc: "Songs played to the end and album covers load from disk, also offline"
                     Toggle {
                         objectName: "cacheToggle"
                         checked: Player.settings.cache

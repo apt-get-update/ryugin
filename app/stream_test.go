@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -49,6 +50,22 @@ func TestStreamProxy(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != http.StatusBadRequest {
 		t.Error("only streams go through, got", res.StatusCode)
+	}
+	res, err = http.Get(prefix + url.QueryEscape("ftp://x/rest/stream?id=s1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest {
+		t.Error("only http and https go through, got", res.StatusCode)
+	}
+	res, err = http.Get(prefix + url.QueryEscape("ftp://h/rest/stream?id=s1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest {
+		t.Error("only http and https go through, got", res.StatusCode)
 	}
 }
 
@@ -122,10 +139,19 @@ func TestSongCacheDropped(t *testing.T) {
 	for _, c := range []struct {
 		total int64
 		path  string
-	}{{10, filepath.Join(dir, "short")}, {3, filepath.Join(dir, "no", "dir")}} {
+		read  int
+	}{
+		{10, filepath.Join(dir, "short"), 3},    // fewer bytes than said
+		{3, filepath.Join(dir, "no", "dir"), 3}, // nowhere to go
+		{-1, filepath.Join(dir, "cut"), 1},      // size unknown, not read to the end
+	} {
 		f, _ := os.CreateTemp(dir, ".part-*")
 		body := &caching{ReadCloser: io.NopCloser(strings.NewReader("abc")), f: f, total: c.total, path: c.path, cache: &songCache{dir: dir}}
-		io.ReadAll(body)
+		if c.read == 3 {
+			io.ReadAll(body)
+		} else {
+			body.Read(make([]byte, c.read))
+		}
 		body.Close()
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
@@ -205,5 +231,107 @@ func TestSongCacheControl(t *testing.T) {
 	}
 	if got := size("clear=1"); got != `{"size":0}` {
 		t.Error("cleared:", got)
+	}
+}
+
+// A cover (any size, sent chunked) is cached by id and size: it shows with the server gone.
+func TestCoverCache(t *testing.T) {
+	jpeg := bytes.Repeat([]byte("\xff\xd8jpeg"), 500)
+	navidrome := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/getCoverArt" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write(jpeg[:100])
+		w.(http.Flusher).Flush() // chunked: no Content-Length
+		w.Write(jpeg[100:])
+	}))
+	dir := t.TempDir()
+	prefix, err := streamProxy(navidrome.Client().Transport, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	get := func(q string) (int, []byte) {
+		res, err := http.Get(prefix + url.QueryEscape(navidrome.URL+"/rest/getCoverArt?"+q))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, b
+	}
+	get("id=al-1_0&size=300")
+	get("id=al-1_0&size=../x") // not a plain size: not cached
+	for range 100 {
+		if _, err := os.Stat(filepath.Join(dir, "cover.300.al-1_0")); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Fatal("one cover cached:", entries)
+	}
+	navidrome.Close()
+	if code, b := get("id=al-1_0&size=300"); code != http.StatusOK || !bytes.Equal(b, jpeg) {
+		t.Fatalf("from the cache: %d, %d bytes", code, len(b))
+	}
+}
+
+// Covers fetched ahead: the ones missing, one at a time; not songs, not when off.
+func TestCoverPrefetch(t *testing.T) {
+	var asked []string
+	var mu sync.Mutex
+	navidrome := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		asked = append(asked, r.URL.Path+"?"+r.URL.Query().Get("id"))
+		mu.Unlock()
+		w.Write([]byte("jpeg " + r.URL.Query().Get("id")))
+	}))
+	defer navidrome.Close()
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "cover.360.have"), []byte("jpeg have"), 0o644)
+	prefix, err := streamProxy(nil, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := strings.TrimSuffix(prefix, "?u=")
+	post := func(list ...string) {
+		res, err := http.Post(base+"prefetch", "text/plain", strings.NewReader(strings.Join(list, "\n")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+	}
+	done := func(n int) bool {
+		for range 100 {
+			if entries, _ := os.ReadDir(dir); len(entries) == n {
+				return true
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		return false
+	}
+	cover := func(id string) string { return navidrome.URL + "/rest/getCoverArt?size=360&id=" + id }
+
+	post(cover("a1"), cover("have"), navidrome.URL+"/rest/stream?id=s1", "ftp://x/rest/getCoverArt?id=f",
+		cover("../x"), "http://127.0.0.1:1/rest/getCoverArt?size=360&id=gone", cover("a2"))
+	if !done(3) { // a2 last: the list is done
+		t.Fatal("a1 and a2 fetched")
+	}
+	mu.Lock()
+	if strings.Join(asked, " ") != "/rest/getCoverArt?a1 /rest/getCoverArt?a2" {
+		t.Error("asked:", asked)
+	}
+	mu.Unlock()
+	if b, _ := os.ReadFile(filepath.Join(dir, "cover.360.a2")); string(b) != "jpeg a2" {
+		t.Errorf("a2: %q", b)
+	}
+
+	http.Get(base + "cache?on=0")
+	time.Sleep(100 * time.Millisecond)
+	post(cover("a3"))
+	time.Sleep(200 * time.Millisecond)
+	if _, err := os.Stat(filepath.Join(dir, "cover.360.a3")); err == nil {
+		t.Error("off, a cover is fetched")
 	}
 }

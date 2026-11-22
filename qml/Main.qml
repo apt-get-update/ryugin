@@ -106,6 +106,7 @@ ApplicationWindow {
         if (typeof goStreamProxy !== "undefined")
             Api.streamProxy = goStreamProxy; // qmllint disable unqualified
         Api.cache({ on: Player.settings.cache ? 1 : 0, limit: Player.settings.cacheLimit });
+        prefetch.start();
         go("home");
         if (!Api.configured)
             settingsPopup.open();
@@ -350,6 +351,13 @@ ApplicationWindow {
             anchors.bottom: parent.bottom
             z: 5
         }
+    }
+
+    // A minute after start (the first page is in), every album's cover into the cache.
+    Timer {
+        id: prefetch
+        interval: 60000
+        onTriggered: if (Player.settings.cache && Api.configured) Api.prefetchCovers()
     }
 
     // Navidrome (SettingsPage) as a popup: the gear, a click outside or Escape closes it;

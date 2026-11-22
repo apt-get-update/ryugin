@@ -27,7 +27,7 @@ Item {
         id: art
         width: card.width
         height: card.width
-        size: 360
+        size: Api.albumCover
         coverId: card.item ? card.item.cover : ""
         scale: area.containsMouse || play.containsMouse ? 1.03 : 1
         Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }

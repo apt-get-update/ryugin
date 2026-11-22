@@ -68,9 +68,29 @@ QtObject {
 
     function cover(id, size) {
         // size 0: the original picture.
-        return id ? url("getCoverArt", { id: id, size: size === 0 ? undefined : size || 300 }) : "";
+        return id ? relay(url("getCoverArt", { id: id, size: size === 0 ? undefined : size || 300 })) : "";
     }
-    // Go's relay (stream.go, set by Main.qml): the song cache, and plain http for Sailfish OS.
+    // AlbumCard's cover size: the covers fetched ahead (prefetchCovers) are this one.
+    readonly property int albumCover: 360
+    // Every album's cover, fetched ahead into the cache by Go (one at a time, only the
+    // missing ones): grids and shelves show at once, also offline.
+    function prefetchCovers() {
+        if (streamProxy === "")
+            return;
+        allAlbums(function (list) {
+            const urls = list.filter(function (a) { return a.cover; }).map(function (a) {
+                return url("getCoverArt", { id: a.cover, size: albumCover });
+            });
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", streamProxy.replace("?u=", "prefetch"));
+            xhr.send(urls.join("\n"));
+        });
+    }
+    // Go's relay (stream.go, set by Main.qml): the cache of songs and covers, and plain http
+    // for Sailfish OS. relay(u): u through it, when it runs.
+    function relay(u) {
+        return streamProxy !== "" ? streamProxy + encodeURIComponent(u) : u;
+    }
     property string streamProxy: ""
     // The song cache (Go, stream.go), when Go's relay runs. params, all optional: on (1 or
     // 0), limit (GB), clear (1). cb(bytes the cache holds).
@@ -95,8 +115,7 @@ QtObject {
         xhr.send();
     }
     function stream(id) {
-        const u = url("stream", { id: id, format: "raw", estimateContentLength: true }); // raw: seekable
-        return streamProxy !== "" ? streamProxy + encodeURIComponent(u) : u;
+        return relay(url("stream", { id: id, format: "raw", estimateContentLength: true })); // raw: seekable
     }
 
     function track(s) {
