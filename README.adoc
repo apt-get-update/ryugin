@@ -17,7 +17,7 @@ Every file is in https://github.com/apt-get-update/ryugin/releases/latest[the la
 
 [source,sh]
 ----
-sudo pacman -U https://github.com/apt-get-update/ryugin/releases/download/v1.0.0/ryugin-1.0.0-1-x86_64.pkg.tar.zst
+sudo pacman -U https://github.com/apt-get-update/ryugin/releases/download/v1.1.0/ryugin-1.1.0-1-x86_64.pkg.tar.zst
 ----
 
 Or build it: `git clone https://github.com/apt-get-update/ryugin && cd ryugin && make arch-install`.
@@ -36,7 +36,7 @@ ssu ar chum https://repo.sailfishos.org/obs/sailfishos:/chum/$r/
 ssu ar chum-testing https://repo.sailfishos.org/obs/sailfishos:/chum:/testing/$r/
 pkcon refresh
 # Ryūgin and qt-runner, the window of Qt 6 apps
-curl -LO https://github.com/apt-get-update/ryugin/releases/download/v1.0.0/ryugin-1.0.0-1.aarch64.rpm
+curl -LO https://github.com/apt-get-update/ryugin/releases/download/v1.1.0/ryugin-1.1.0-1.aarch64.rpm
 curl -LO https://github.com/apt-get-update/ryugin/releases/download/v1.0.0/qt-runner-0.4.6-1.9.2.bso.mpris3.aarch64.rpm
 pkcon install-local ryugin-*.rpm qt-runner-*.rpm
 ----

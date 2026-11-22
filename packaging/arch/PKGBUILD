@@ -3,7 +3,7 @@
 # Build: make arch-install (or cd packaging/arch && makepkg -si)
 
 pkgname=ryugin
-pkgver=1.0.0
+pkgver=1.1.0
 pkgrel=1
 pkgdesc="Navidrome player with synced lyrics (Go + QML)"
 arch=('x86_64')
