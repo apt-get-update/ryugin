@@ -3,7 +3,7 @@
 // off: volume 0.1): the cover's 32x32 texture (made in Go) read 1:1 x 0.8, turning about
 // the point 20% in from the corner, mirrored past its edges; dithered; darkened towards the
 // sides. A new cover fades over the old.
-// Compile: ./shaders.sh
+// Compile: make shaders
 layout(location = 0) in vec2 v_uv;
 layout(location = 0) out vec4 fragColor;
 layout(std140, binding = 0) uniform buf {

@@ -48,7 +48,7 @@ func onQt(f func()) {
 // commands QML knows.
 func TestGlobalMenu(t *testing.T) {
 	qml := ""
-	for _, f := range []string{"qml/Main.qml", "qml/Player.qml"} {
+	for _, f := range []string{"../qml/Main.qml", "../qml/Player.qml"} {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
@@ -120,7 +120,7 @@ func TestGlobalMenu(t *testing.T) {
 func TestTray(t *testing.T) {
 	onQt(func() {
 		var sent []map[string]any
-		tray, ok := newTray("qml", func(c map[string]any) { sent = append(sent, c) })
+		tray, ok := newTray("../qml", func(c map[string]any) { sent = append(sent, c) })
 		if ok || tray.IsVisible() {
 			t.Error("a tray with no tray")
 		}

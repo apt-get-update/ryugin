@@ -2,7 +2,7 @@
 // The fullscreen player's backdrop, as SPlayer-Next's default ("blur"): the cover filling
 // the window, scaled 1.5x, blur(45px) saturate(1.2) (made in Go), under 50% black.
 // A new cover fades over the old one. Read in float, dithered: no steps.
-// Compile: ./shaders.sh
+// Compile: make shaders
 layout(location = 0) in vec2 qt_TexCoord0;
 layout(location = 0) out vec4 fragColor;
 layout(std140, binding = 0) uniform buf {

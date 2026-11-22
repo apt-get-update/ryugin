@@ -192,7 +192,7 @@ func TestProgramOnTheBus(t *testing.T) {
 		readAtOnce <- err
 	}()
 	app := exec.Command(bin)
-	app.Env = append(os.Environ(), "QT_QPA_PLATFORM=offscreen", "RYUGIN_QML="+filepath.Join(must(os.Getwd()), "qml"))
+	app.Env = append(os.Environ(), "QT_QPA_PLATFORM=offscreen", "RYUGIN_QML="+filepath.Join(must(os.Getwd()), "..", "qml"))
 	if err := app.Start(); err != nil {
 		t.Fatal(err)
 	}

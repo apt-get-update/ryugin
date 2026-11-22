@@ -4,7 +4,7 @@
 // first folds over itself and shows a hard arc (main_test.go checks for folds). The grid's
 // texture coordinate is the mesh parameter; the vertex lands where the patch puts it,
 // stretched by the window's aspect like AMLL's mesh.vert.
-// Compile: ./shaders.sh
+// Compile: make shaders
 layout(location = 0) in vec4 qt_Vertex;
 layout(location = 1) in vec2 qt_MultiTexCoord0;
 layout(location = 0) out vec2 v_uv;

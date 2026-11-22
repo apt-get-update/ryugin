@@ -107,7 +107,7 @@ func TestProgramOnSailfish(t *testing.T) {
 	for _, bus := range []string{os.Getenv("DBUS_SESSION_BUS_ADDRESS"), "unix:path=/nonexistent"} {
 		app := exec.Command(runner, bin)
 		app.Env = append(os.Environ(), "QT_QPA_PLATFORM=offscreen", "RYUGIN_DPI=320", "FLATPAK_MALIIT_CONTAINER_DBUS="+bus, "XDG_CACHE_HOME="+cache,
-			"RYUGIN_QML="+filepath.Join(must(os.Getwd()), "qml"))
+			"RYUGIN_QML="+filepath.Join(must(os.Getwd()), "..", "qml"))
 		if err := app.Start(); err != nil {
 			t.Fatal(err)
 		}

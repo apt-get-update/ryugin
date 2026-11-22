@@ -1,6 +1,6 @@
 #version 440
 // Fades an item out to the right (the "Full cover" layout's cover).
-// Compile: ./shaders.sh
+// Compile: make shaders
 layout(location = 0) in vec2 qt_TexCoord0;
 layout(location = 0) out vec4 fragColor;
 layout(std140, binding = 0) uniform buf {

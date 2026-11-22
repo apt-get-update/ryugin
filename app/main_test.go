@@ -199,7 +199,7 @@ func TestIntrospectionNamesSeek(t *testing.T) {
 
 // The flow mesh (flow.vert) must never fold over itself: a fold shows as a hard arc.
 func TestFlowMeshDoesNotFold(t *testing.T) {
-	src, err := os.ReadFile("qml/flow.vert")
+	src, err := os.ReadFile("../qml/flow.vert")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +249,7 @@ func TestFlowMeshDoesNotFold(t *testing.T) {
 // Sailfish OS's Qt (Chum, 6.8; 6.7 elsewhere) lacks newer QML: no RectangularShadow (6.9, use
 // Shadow.qml), and retainWhileLoading (6.8) only through a Binding that checks for it.
 func TestQMLRunsOnQt67(t *testing.T) {
-	files, _ := filepath.Glob("qml/*.qml")
+	files, _ := filepath.Glob("../qml/*.qml")
 	// Qt 6.9 types and properties, and property names older parsers reserve (Java's words:
 	// "property bool long" fails with "Expected token `identifier'").
 	newer := regexp.MustCompile(`^\s*RectangularShadow\b|^\s*retainWhileLoading\s*:|property\s+\S+\s+(abstract|boolean|byte|char|double|enum|final|float|goto|implements|int|interface|long|native|package|private|protected|public|short|static|synchronized|throws|transient|volatile)\s*([:;]|$)`)
@@ -281,7 +281,7 @@ func TestQmlDir(t *testing.T) {
 // No QML handler on a signal of Qt's render thread: with the threaded render loop (the
 // phone's), its JavaScript runs off the GUI thread and the app crashes (frameSwapped did).
 func TestQMLNoRenderThreadHandlers(t *testing.T) {
-	files, _ := filepath.Glob("qml/*.qml")
+	files, _ := filepath.Glob("../qml/*.qml")
 	bad := regexp.MustCompile(`\bon(FrameSwapped|BeforeRendering|AfterRendering|BeforeRenderPassRecording|AfterRenderPassRecording|BeforeSynchronizing|AfterSynchronizing|BeforeFrameBegin|AfterFrameEnd|SceneGraphInitialized|SceneGraphInvalidated)\s*:`)
 	for _, f := range files {
 		b, _ := os.ReadFile(f)

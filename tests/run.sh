@@ -15,7 +15,7 @@ echo "PASS   : code quality (golangci-lint, qmllint)"
 # Go's coverage: the unit tests and the real program's runs below, together.
 cov="$tmp/cov"
 mkdir -p "$cov"
-go test -covermode=atomic . -args -test.gocoverdir="$cov"
+go test -covermode=atomic ./app -args -test.gocoverdir="$cov"
 
 go build -o "$tmp/mock" ./tests/mocknavidrome
 "$tmp/mock" -addr 127.0.0.1:4533 &
@@ -35,7 +35,7 @@ fi
 # The real program, 6 s against the mock: Go, the tray, the global menu and Main.qml
 # together must start without a QML error. No session bus, so a running player is not
 # asked to show itself instead.
-go build -covermode=atomic -o "$tmp/sgd" .
+go build -covermode=atomic -o "$tmp/sgd" ./app
 export GOCOVERDIR="$cov"
 mkdir -p "$tmp/config/ryugin"
 printf '[server]\nurl=http://127.0.0.1:4533\nuser=u\ntoken=t\nsalt=s\n' > "$tmp/config/ryugin/ryugin.conf"
@@ -55,12 +55,12 @@ if QT_QPA_PLATFORM=offscreen XDG_CONFIG_HOME="$tmp/config" RYUGIN_QML="$tmp/bad"
 
 # The same program on a session bus of its own: MPRIS from QML through Go (mpris_test.go),
 # and as on Sailfish OS (container_test.go).
-XDG_CONFIG_HOME="$tmp/config" RYUGIN_BIN="$tmp/sgd" go test -count=1 -run 'TestProgramOn' .
+XDG_CONFIG_HOME="$tmp/config" RYUGIN_BIN="$tmp/sgd" go test -count=1 -run 'TestProgramOn' ./app
 
 # 100 % of the Go code is run by the tests; the badge in the README says so.
 go tool covdata textfmt -i="$cov" -o "$tmp/cov.txt"
 go tool cover -func="$tmp/cov.txt" | awk '$NF != "100.0%"'
 pct=$(go tool cover -func="$tmp/cov.txt" | awk '/^total:/ { print $NF }')
-sed "s/PCT/$pct/g" tests/badge.svg > coverage.svg
+sed "s/PCT/$pct/g" tests/badge.svg > docs/coverage.svg
 [ "$pct" = "100.0%" ] || { grep " 0$" "$tmp/cov.txt"; echo "Go coverage: $pct" >&2; exit 1; }
 echo "PASS   : Go coverage $pct"
