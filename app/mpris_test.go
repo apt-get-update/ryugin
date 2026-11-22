@@ -61,7 +61,7 @@ func TestMPRISOnTheBus(t *testing.T) {
 
 	// The state as Player.qml's report() sends it, a track starting.
 	var s playerState
-	msg := `{"status":"Playing","position":12000000,"volume":0.8,"seeked":false,"nonce":0.5,
+	msg := `{"status":"Playing","position":12000000,"volume":0.8,"seeked":false,"nonce":0.5,"shuffle":true,"loop":"Track",
 		"track":{"id":"s-0","title":"布団","artist":"打首獄門同好会","album":"冬盤","art":"http://h/rest/getCoverArt?id=c","length":251000000}}`
 	if err := json.Unmarshal([]byte(msg), &s); err != nil {
 		t.Fatal(err)
@@ -86,6 +86,9 @@ func TestMPRISOnTheBus(t *testing.T) {
 	}
 	if p := get("Position").Value(); p != int64(12000000) {
 		t.Error("position", p)
+	}
+	if sh, l := get("Shuffle").Value(), get("LoopStatus").Value(); sh != true || l != "Track" {
+		t.Error("shuffle, loop", sh, l)
 	}
 
 	// Paused, the volume at 0 (left as it was), a seek: the Seeked signal.
@@ -139,6 +142,10 @@ func TestMPRISOnTheBus(t *testing.T) {
 	expect("SetPosition", map[string]any{"cmd": "setPosition", "position": int64(7)})
 	must(0, player.SetProperty(playerIface+".Volume", dbus.MakeVariant(0.5)))
 	expect("Volume", map[string]any{"cmd": "volume", "value": 0.5})
+	must(0, player.SetProperty(playerIface+".Shuffle", dbus.MakeVariant(false)))
+	expect("Shuffle", map[string]any{"cmd": "setShuffle", "value": false})
+	must(0, player.SetProperty(playerIface+".LoopStatus", dbus.MakeVariant("Playlist")))
+	expect("LoopStatus", map[string]any{"cmd": "setLoop", "value": "Playlist"})
 	must(0, player.Call(playerIface+".OpenUri", 0, "file:///x.flac").Err)
 	select {
 	case c := <-sent:
@@ -192,7 +199,7 @@ func TestProgramOnTheBus(t *testing.T) {
 		readAtOnce <- err
 	}()
 	app := exec.Command(bin)
-	app.Env = append(os.Environ(), "QT_QPA_PLATFORM=offscreen", "RYUGIN_QML="+filepath.Join(must(os.Getwd()), "qml"))
+	app.Env = append(os.Environ(), "QT_QPA_PLATFORM=offscreen", "RYUGIN_QML="+filepath.Join(must(os.Getwd()), "..", "qml"))
 	if err := app.Start(); err != nil {
 		t.Fatal(err)
 	}

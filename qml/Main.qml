@@ -105,6 +105,8 @@ ApplicationWindow {
             Player.bridge = goBridge; // qmllint disable unqualified
         if (typeof goStreamProxy !== "undefined")
             Api.streamProxy = goStreamProxy; // qmllint disable unqualified
+        Api.cache({ on: Player.settings.cache ? 1 : 0, limit: Player.settings.cacheLimit });
+        prefetch.start();
         go("home");
         if (!Api.configured)
             settingsPopup.open();
@@ -351,6 +353,13 @@ ApplicationWindow {
         }
     }
 
+    // Just after start (the first page's covers come first), every album's cover into the cache.
+    Timer {
+        id: prefetch
+        interval: 5000
+        onTriggered: if (Player.settings.cache && Api.configured) Api.prefetchCovers()
+    }
+
     // Navidrome (SettingsPage) as a popup: the gear, a click outside or Escape closes it;
     // it stays until a server is set.
     Popup {
@@ -362,7 +371,7 @@ ApplicationWindow {
         padding: 0
         closePolicy: Api.configured ? Popup.CloseOnEscape | Popup.CloseOnPressOutside : Popup.NoAutoClose
         background: null
-        contentItem: SettingsPage {}
+        contentItem: SettingsPage { onCloseRequested: settingsPopup.close() }
         Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.45) }
         enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 150 } }
         exit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 150 } }

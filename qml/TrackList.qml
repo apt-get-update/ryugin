@@ -86,15 +86,19 @@ ListView {
             anchors.right: parent.right
             anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
-            icon: "star"
+            icon: row.starred ? "heart-fill" : "heart"
             iconSize: 16
             active: row.starred
             onClicked: {
                 // Rows get a copy of the track: change the list's own object too.
                 const t = list.tracks[row.index];
-                row.starred = t.starred = !row.starred;
+                t.starred = !row.starred;
                 Player.setStarred(t.id, t.starred);
             }
+        }
+        Connections {
+            target: Player
+            function onLiked(songId, on) { if (songId === row.modelData.id) row.starred = on; }
         }
     }
 }

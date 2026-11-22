@@ -16,6 +16,12 @@ QtObject {
         property string salt: ""
     }
     readonly property Prefs settings: Prefs {}
+    // What Navidrome last said, shown at once next time (and offline): allAlbums' list.
+    component Known: Settings {
+        category: "library"
+        property string albums: "" // JSON; "" not known yet
+    }
+    readonly property Known known: Known {}
     readonly property bool configured: settings.url !== "" && settings.user !== "" && settings.token !== ""
     property bool online: false
     property string error: ""
@@ -28,6 +34,7 @@ QtObject {
         settings.user = user.trim();
         settings.salt = salt;
         settings.token = Qt.md5(password + salt);
+        known.albums = ""; // maybe another server
         get("ping", {}, cb);
     }
 
@@ -68,13 +75,55 @@ QtObject {
 
     function cover(id, size) {
         // size 0: the original picture.
-        return id ? url("getCoverArt", { id: id, size: size === 0 ? undefined : size || 300 }) : "";
+        return id ? relay(url("getCoverArt", { id: id, size: size === 0 ? undefined : size || 300 })) : "";
     }
-    // Sailfish OS: Go relays https streams over plain http (Main.qml sets it).
+    // AlbumCard's cover size: the covers fetched ahead (prefetchCovers) are this one.
+    readonly property int albumCover: 360
+    // Every album's cover, fetched ahead into the cache by Go (one at a time, only the
+    // missing ones): grids and shelves show at once, also offline.
+    function prefetchCovers() {
+        if (streamProxy === "")
+            return;
+        allAlbums(function (list) {
+            const urls = list.filter(function (a) { return a.cover; }).map(function (a) {
+                return url("getCoverArt", { id: a.cover, size: albumCover });
+            });
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", streamProxy.replace("?u=", "prefetch"));
+            xhr.send(urls.join("\n"));
+        });
+    }
+    // Go's relay (stream.go, set by Main.qml): the cache of songs and covers, and plain http
+    // for Sailfish OS. relay(u): u through it, when it runs.
+    function relay(u) {
+        return streamProxy !== "" ? streamProxy + encodeURIComponent(u) : u;
+    }
     property string streamProxy: ""
+    // The cache (Go, stream.go), when Go's relay runs. params, all optional: on (1 or 0,
+    // the songs), limit (GB, the songs), clear ("songs" or "covers"). cb({ songs, covers }:
+    // the bytes each holds).
+    function cache(params, cb) {
+        if (streamProxy === "")
+            return;
+        const xhr = new XMLHttpRequest();
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState !== XMLHttpRequest.DONE)
+                return;
+            let r = null;
+            try {
+                r = JSON.parse(xhr.responseText);
+            } catch (e) {}
+            if (r && cb)
+                cb(r);
+        };
+        let q = "";
+        for (const k in params)
+            q += "&" + k + "=" + encodeURIComponent(params[k]);
+        xhr.open("GET", streamProxy.replace("?u=", "cache?") + q.slice(1));
+        xhr.send();
+    }
     function stream(id) {
-        const u = url("stream", { id: id, format: "raw", estimateContentLength: true }); // raw: seekable
-        return streamProxy !== "" && u.indexOf("https:") === 0 ? streamProxy + encodeURIComponent(u) : u;
+        return relay(url("stream", { id: id, format: "raw", estimateContentLength: true })); // raw: seekable
     }
 
     function track(s) {
@@ -106,16 +155,29 @@ QtObject {
         });
     }
 
+    // Every album, by name. The last list known comes first, at once (no wait, no jump,
+    // also offline), then Navidrome's, only when it differs.
     function allAlbums(cb) {
+        if (known.albums !== "")
+            cb(JSON.parse(known.albums));
         const all = [];
         const page = function (offset) {
-            albumList("alphabeticalByName", 500, offset, function (list) {
+            get("getAlbumList2", { type: "alphabeticalByName", size: 500, offset: offset }, function (e, r) {
+                if (e) { // no answer: the last list stays
+                    if (known.albums === "")
+                        cb([]);
+                    return;
+                }
+                const list = ((r.albumList2 && r.albumList2.album) || []).map(album);
                 for (const a of list)
                     all.push(a);
                 if (list.length === 500)
-                    page(offset + 500);
-                else
+                    return page(offset + 500);
+                const json = JSON.stringify(all);
+                if (json !== known.albums) {
+                    known.albums = json;
                     cb(all);
+                }
             });
         };
         page(0);

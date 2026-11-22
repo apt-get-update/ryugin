@@ -416,7 +416,7 @@ Rectangle {
                         width: parent.width
                         height: view.height * 0.075
                         readonly property real big: Math.max(28, view.height * 0.05)
-                        Glyph { name: "shuffle"; size: parent.big * 0.5; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.shuffleRest() }
+                        Glyph { name: Player.settings.shuffle ? "shuffle" : "play-order"; size: parent.big * 0.5; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.toggleShuffle() }
                         Row {
                             anchors.centerIn: parent
                             spacing: parent.width * 0.09
@@ -916,7 +916,11 @@ Rectangle {
             x: 16
             anchors.verticalCenter: parent.verticalCenter
             spacing: 8
-            Btn { icon: "chevron-down"; size: 44; iconSize: 22; onClicked: Nav.lyrics = false }
+            Btn {
+                icon: "chevron-down"; size: 44; iconSize: 22; onClicked: Nav.lyrics = false
+                // Scroll down on it: out of full screen (scroll up on the bar's cover comes in).
+                MouseArea { anchors.fill: parent; acceptedButtons: Qt.NoButton; onWheel: function (e) { if (e.angleDelta.y < 0) Nav.lyrics = false; } }
+            }
             Btn {
                 size: 44
                 iconSize: 22
@@ -934,7 +938,7 @@ Rectangle {
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 12
-                Btn { icon: "shuffle"; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.shuffleRest() }
+                Btn { icon: Player.settings.shuffle ? "shuffle" : "play-order"; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.toggleShuffle() }
                 Btn { icon: "skip-back"; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.previous() }
                 Btn { icon: Player.playing ? "pause" : "play"; secondary: true; size: 44; iconSize: 22; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.toggle() }
                 Btn { icon: "skip-forward"; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.next() }
@@ -1011,7 +1015,10 @@ Rectangle {
                         onMoved: Player.setVolume(value)
                     }
                     Btn {
+                        id: mute
                         property real before: 0.8
+                        // Middle click: mute, as a left click.
+                        MouseArea { anchors.fill: parent; acceptedButtons: Qt.MiddleButton; onClicked: mute.clicked() }
                         icon: Player.settings.volume === 0 ? "volume-x" : Player.settings.volume < 0.5 ? "volume-1" : "volume-2"
                         onClicked: {
                             if (Player.settings.volume > 0) {

@@ -2,7 +2,7 @@
 
 image::art/icon.png[Ryūgin,160]
 
-image:coverage.svg[Go coverage]
+image:docs/coverage.svg[Go coverage]
 
 A Navidrome player for Linux and Sailfish OS, focused on your Navidrome collection: a fork of https://github.com/imsyy/SPlayer[SPlayer] rewritten in Go + QML.
 Ryūgin, "the dragon's song", is the Zen word for a deep, resonant sound.
@@ -17,10 +17,10 @@ Every file is in https://github.com/apt-get-update/ryugin/releases/latest[the la
 
 [source,sh]
 ----
-sudo pacman -U https://github.com/apt-get-update/ryugin/releases/download/v1.0.0/ryugin-1.0.0-1-x86_64.pkg.tar.zst
+sudo pacman -U https://github.com/apt-get-update/ryugin/releases/download/v1.1.0/ryugin-1.1.0-1-x86_64.pkg.tar.zst
 ----
 
-Or build it: `git clone https://github.com/apt-get-update/ryugin && cd ryugin/arch && makepkg -si`.
+Or build it: `git clone https://github.com/apt-get-update/ryugin && cd ryugin && make arch-install`.
 
 === Sailfish OS
 
@@ -36,7 +36,7 @@ ssu ar chum https://repo.sailfishos.org/obs/sailfishos:/chum/$r/
 ssu ar chum-testing https://repo.sailfishos.org/obs/sailfishos:/chum:/testing/$r/
 pkcon refresh
 # Ryūgin and qt-runner, the window of Qt 6 apps
-curl -LO https://github.com/apt-get-update/ryugin/releases/download/v1.0.0/ryugin-1.0.0-1.aarch64.rpm
+curl -LO https://github.com/apt-get-update/ryugin/releases/download/v1.1.0/ryugin-1.1.0-1.aarch64.rpm
 curl -LO https://github.com/apt-get-update/ryugin/releases/download/v1.0.0/qt-runner-0.4.6-1.9.2.bso.mpris3.aarch64.rpm
 pkcon install-local ryugin-*.rpm qt-runner-*.rpm
 ----
@@ -78,12 +78,23 @@ Then start Ryūgin: it asks for your Navidrome address, user and password. Only 
 
 == 🛠️ Development
 
-* `qml/`: the UI, the Subsonic API calls (`Api.qml`) and playback (`Player.qml`).
-* `main.go`: Qt and the QML engine; `mpris.go`: MPRIS, and only one copy runs; `menu.go`: the global menu (AT-SPI); `tray.go`, `color.go`: the tray and the cover's colour.
-* `rpm/`, `sailfish.sh`: the Sailfish OS package. With the Sailfish SDK in `~/SailfishOS`, `aarch64-linux-gnu-gcc` and `rpm-tools`: `./sailfish.sh install PHONE` builds it and installs it over SSH.
+[source]
+----
+app/                 Go: Qt and the QML engine (main.go), MPRIS (mpris.go), the global
+                     menu (menu.go), tray, cover colours, the stream relay + song cache
+qml/                 the UI, the Subsonic API (Api.qml), playback (Player.qml), shaders
+packaging/arch/      PKGBUILD, .desktop
+packaging/sailfish/  build.sh, spec, .desktop, icons
+tests/               run.sh, phone.sh, the mock Navidrome, QML tests
+art/                 the icon's source (icon.py)
+docs/                screenshots, coverage badge
+----
 
-Tests: `tests/run.sh` (needs `golangci-lint`). Lint with no warning, the Go and QML tests against a mock Navidrome, headless, and the real program; any QML warning fails, and the Go coverage must be 100 %.
-On the phone (unlocked): `tests/phone.sh PHONE [ROUNDS]` plays, skips and minimizes it, and checks CPU, memory, frames and real-time playback.
+`make` lists the targets: `make arch-install`, `make phone-install PHONE=…`, `make test`, `make shaders`.
+The Sailfish OS package needs the Sailfish SDK in `~/SailfishOS`, `aarch64-linux-gnu-gcc` and `rpm-tools`; `make phone-install PHONE=…` builds it and installs it over SSH.
+
+Tests: `make test` (needs `golangci-lint`). Lint with no warning, the Go and QML tests against a mock Navidrome, headless, and the real program; any QML warning fails, and the Go coverage must be 100 %.
+On the phone (unlocked): `make bench PHONE=…` plays, skips and minimizes it, and checks CPU, memory, frames and real-time playback.
 
 == 📜 Credits
 

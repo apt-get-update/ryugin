@@ -114,19 +114,54 @@ TestCase {
         compare(Player.index, 0);
     }
 
-    function test_shuffle_keeps_every_track() {
-        Player.shuffle(tracks(20));
-        compare(Player.queue.length, 20);
-        compare(Player.queue.map(function (t) { return t.id; }).sort().join(), tracks(20).map(function (t) { return t.id; }).sort().join());
-    }
+    function ids() { return Player.queue.map(function (t) { return t.id; }).join(); }
 
-    function test_shuffle_rest_keeps_the_head() {
+    // ---- Shuffle, as SPlayer-Next: a mode, off by default.
+    function test_shuffle_off_by_default() {
+        compare(Player.settings.shuffle, false);
+        Player.play(tracks(5), 2);
+        compare(ids(), "s0,s1,s2,s3,s4", "off: the list's order");
+        compare(Player.index, 2);
+    }
+    function test_shuffle_on_then_off() {
         Player.play(tracks(20), 4);
-        Player.shuffleRest();
-        compare(Player.index, 4);
-        for (let i = 0; i <= 4; i++)
-            compare(Player.queue[i].id, "s" + i);
-        compare(Player.queue.length, 20);
+        Player.toggleShuffle();
+        verify(Player.settings.shuffle);
+        compare(Player.index, 0, "the playing song first");
+        compare(Player.current.id, "s4");
+        compare(Player.queue.map(function (t) { return t.id; }).sort().join(), tracks(20).map(function (t) { return t.id; }).sort().join(), "every song kept");
+        Player.next();
+        const id = Player.current.id;
+        Player.toggleShuffle();
+        verify(!Player.settings.shuffle);
+        compare(ids(), tracks(20).map(function (t) { return t.id; }).join(), "off: the order back");
+        compare(Player.current.id, id, "at the playing song");
+    }
+    function test_shuffle_buttons_turn_it_on() {
+        try {
+            Player.shuffle(tracks(20));
+            verify(Player.settings.shuffle);
+            compare(Player.queue.length, 20);
+            Player.play(tracks(20), 7); // a song picked in a list: it plays first, the rest mixed
+            compare(Player.current.id, "s7");
+            compare(Player.index, 0);
+        } finally {
+            Player.toggleShuffle();
+        }
+    }
+    function test_shuffle_new_order_on_repeat() {
+        Player.repeat = "all";
+        Player.play(tracks(3), 0);
+        Player.toggleShuffle();
+        try {
+            Player.jump(2);
+            const last = Player.current.id;
+            Player.next(); // the end: again, in a new order
+            compare(Player.index, 1);
+            compare(Player.queue[0].id, last, "the last song not again at once");
+        } finally {
+            Player.toggleShuffle();
+        }
     }
 
     function test_enqueue() {
@@ -257,5 +292,105 @@ TestCase {
         verify(Player.queue[3].starred);
         verify(!Player.queue[1].starred);
         verify(Player.current.starred);
+    }
+    function test_like_from_a_list_fills_the_heart() {
+        // A track list changes the shared object first, then calls setStarred.
+        const l = tracks(2);
+        Player.play(l, 0);
+        let told = null;
+        const f = function (id, on) { told = [id, on]; };
+        Player.liked.connect(f);
+        Player.queue[0].starred = true;
+        Player.setStarred("s0", true);
+        Player.liked.disconnect(f);
+        verify(heart.liked, "the heart fills");
+        compare(told, ["s0", true], "the lists are told");
+    }
+
+    // ---- The last run's queue: back at start, paused, not told to MPRIS until played.
+    function lastRun(at) {
+        Player.clear();
+        Player.settings.queue = JSON.stringify(tracks(4));
+        Player.settings.original = "";
+        Player.settings.index = 2;
+        Player.settings.position = at;
+        Player.settings.server = Api.settings.url;
+        Player.restore();
+    }
+    function test_restore_the_last_run() {
+        Player.play(tracks(3), 1);
+        compare(JSON.parse(Player.settings.queue).length, 3, "the queue is kept");
+        compare(Player.settings.index, 1);
+        lastRun(42000);
+        verify(Player.restored);
+        compare(Player.current.id, "s2");
+        compare(Player.position, 42000, "where it stopped");
+        verify(!Player.playing);
+        compare(Player.media.source.toString(), "", "nothing loaded");
+    }
+    function test_restored_keeps_the_cover_split() {
+        lastRun(5000);
+        Player.bridge = fakeBridge;
+        Player.report(true, false);
+        const s = JSON.parse(fakeBridge.objectName);
+        verify(s.track === undefined, "no song for MPRIS yet: the cover shows the albums");
+        verify(Array.isArray(s.recentArt));
+        Player.bridge = null;
+    }
+    function test_play_resumes_the_restored_song() {
+        mock.calls(true);
+        lastRun(30000);
+        Player.command({ cmd: "play" }); // the cover's play button
+        verify(!Player.restored);
+        compare(Player.current.id, "s2");
+        compare(Player.resumeAt, 30000, "from where it stopped");
+        verify(Player.media.source.toString().indexOf("id=s2") > 0);
+        wait(200);
+        verify(!mock.called("getRandomSongs"), "not random songs");
+    }
+    function test_seek_while_restored() {
+        lastRun(30000);
+        Player.seek(10000);
+        compare(Player.position, 10000);
+        verify(Player.restored, "still not loaded");
+    }
+    function test_no_restore_from_another_server() {
+        Player.clear();
+        Player.settings.queue = JSON.stringify(tracks(4));
+        Player.settings.index = 1;
+        Player.settings.server = "https://other.example";
+        Player.restore();
+        verify(!Player.restored);
+        compare(Player.current, null);
+    }
+    function test_repeat_is_kept() {
+        Player.repeat = "one";
+        compare(Player.settings.repeat, "one");
+        Player.repeat = "off";
+    }
+
+    // ---- MPRIS: shuffle and repeat as shell widgets and playerctl see and set them.
+    function test_mpris_shuffle_and_loop() {
+        Player.bridge = fakeBridge;
+        try {
+            Player.repeat = "one";
+            compare(JSON.parse(fakeBridge.objectName).loop, "Track");
+            Player.toggleShuffle();
+            compare(JSON.parse(fakeBridge.objectName).shuffle, true);
+            Player.command({ cmd: "setShuffle", value: false });
+            verify(!Player.settings.shuffle);
+            Player.command({ cmd: "setShuffle", value: false }); // already off: no change
+            verify(!Player.settings.shuffle);
+            Player.command({ cmd: "setLoop", value: "Playlist" });
+            compare(Player.repeat, "all");
+            Player.command({ cmd: "setLoop", value: "Bogus" });
+            compare(Player.repeat, "all", "unknown: left as it was");
+            Player.command({ cmd: "setLoop", value: "None" });
+            compare(Player.repeat, "off");
+            compare(JSON.parse(fakeBridge.objectName).loop, "None");
+        } finally {
+            Player.bridge = null;
+            Player.repeat = "off";
+        }
     }
 }

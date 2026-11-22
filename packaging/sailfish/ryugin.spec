@@ -1,7 +1,7 @@
 # Ryūgin for Sailfish OS (aarch64), Qt 6 (6.8) from the Chum testing repo,
-# started by qt-runner. Built by ./sailfish.sh: see README.adoc, "Sailfish OS".
+# started by qt-runner. Built by make phone: see README.adoc, "Sailfish OS".
 Name:       ryugin
-Version:    1.0.0
+Version:    1.1.0
 Release:    1
 Summary:    Navidrome player with synced lyrics (Go + Qt 6 QML)
 License:    AGPL-3.0-or-later
@@ -23,19 +23,19 @@ A Navidrome player after SPlayer-Next: library, fullscreen player with synced ly
 colours from the cover, MPRIS for the lock screen.
 
 %prep
-# Built by sailfish.sh on the build machine, from the source tree (%{src}).
+# Built by packaging/sailfish/build.sh on the build machine, from the source tree (%{src}).
 
 %build
-[ -x %{src}/%{name} ] || { echo "run ./sailfish.sh: it builds %{name} first" >&2; exit 1; }
+[ -x %{src}/%{name} ] || { echo "run packaging/sailfish/build.sh (make phone): it builds %{name} first" >&2; exit 1; }
 
 %install
 cd %{src}
 install -Dm755 %{name} %{buildroot}%{_bindir}/%{name}
 install -d %{buildroot}%{_datadir}/%{name}
 cp -r qml %{buildroot}%{_datadir}/%{name}/
-install -Dm644 rpm/%{name}.desktop %{buildroot}%{_datadir}/applications/%{name}.desktop
+install -Dm644 packaging/sailfish/%{name}.desktop %{buildroot}%{_datadir}/applications/%{name}.desktop
 for n in 86 108 128 172; do
-    install -Dm644 rpm/icons/$n.png %{buildroot}%{_datadir}/icons/hicolor/${n}x${n}/apps/%{name}.png
+    install -Dm644 packaging/sailfish/icons/$n.png %{buildroot}%{_datadir}/icons/hicolor/${n}x${n}/apps/%{name}.png
 done
 
 %files

@@ -1,6 +1,6 @@
 #!/bin/sh
 # tests/phone.sh PHONE [ROUNDS]: Ryūgin's bench on a Sailfish OS phone, from this PC.
-# Builds (sailfish.sh, NOBUILD=1 skips it), copies the binary and qml/ to ~/ryugin-bench
+# Builds (packaging/sailfish/build.sh, NOBUILD=1 skips it), copies the binary and qml/ to ~/ryugin-bench
 # on the phone (nothing is installed) and, each round, starts it under qt-runner, plays
 # (MPRIS: 50 random songs), skips, sends it behind another app and back (lipstick), and
 # measures CPU, memory, frames and the playback speed. Fails on a crash, on a window
@@ -10,7 +10,7 @@ set -e
 cd "$(dirname "$0")/.."
 phone=${1:?usage: tests/phone.sh PHONE [ROUNDS]}
 rounds=${2:-3}
-[ -n "$NOBUILD" ] || ./sailfish.sh >/dev/null
+[ -n "$NOBUILD" ] || packaging/sailfish/build.sh >/dev/null
 tar cf - ryugin qml | ssh "$phone" 'rm -rf ryugin-bench && mkdir ryugin-bench && tar xf - -C ryugin-bench'
 rm -rf tests/phone && mkdir -p tests/phone
 status=0

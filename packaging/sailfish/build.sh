@@ -1,8 +1,8 @@
 #!/bin/sh
 # Builds the Sailfish OS package (aarch64) with the Sailfish SDK, and installs it on a phone.
 #
-#   ./sailfish.sh                 build RPMS/ryugin-*.aarch64.rpm
-#   ./sailfish.sh install PHONE   build, then install on the phone at PHONE (IP or name):
+#   build.sh                 build RPMS/ryugin-*.aarch64.rpm
+#   build.sh install PHONE   build, then install on the phone at PHONE (IP or name):
 #                                 developer mode and SSH on, Chum with its testing repo
 #
 # Needs go, aarch64-linux-gnu-gcc and rpm-tools here. Everything builds on this machine; the
@@ -12,7 +12,7 @@
 # A package built for an older release runs on newer phones (5.1 target, 5.2 phone); the
 # phone takes its Qt 6 from its own release's Chum.
 set -e
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/../.." # the repo
 SFOS=${SFOS:-5.1.0.11}
 SDK_DIR=${SDK:-$HOME/SailfishOS}
 PATH=$SDK_DIR/bin:$PATH
@@ -51,11 +51,11 @@ export PKG_CONFIG_SYSROOT_DIR="$S" PKG_CONFIG_LIBDIR="$S/usr/lib64/pkgconfig:$S/
     CGO_CFLAGS=-O2 CGO_CXXFLAGS="-O2 -Wno-sfinae-incomplete" \
     CGO_LDFLAGS="--sysroot=$L -B$L/usr/lib64 -L$L/usr/lib64 -Wl,-rpath-link,$L/usr/lib64 -static-libstdc++ -static-libgcc" \
     GO111MODULE=on GOOS=linux GOARCH=arm64 CGO_ENABLED=1 GOFLAGS=-buildvcs=false
-version=$(awk '/^Version:/ { print $2 }' rpm/ryugin.spec)
+version=$(awk '/^Version:/ { print $2 }' packaging/sailfish/ryugin.spec)
 # A bar over the C++ files (Qt's bindings: only the first build compiles them). On an
 # error, the build runs again without the bar to show it.
-total=$(go list -deps -f '{{range .CXXFiles}}{{println .}}{{end}}' . | grep -c . || true)
-if ! { go build -x -trimpath -ldflags "-s -w -X main.version=$version" -o ryugin . 2>&1; echo "exit $?"; } | awk -v total="$total" '
+total=$(go list -deps -f '{{range .CXXFiles}}{{println .}}{{end}}' ./app | grep -c . || true)
+if ! { go build -x -trimpath -ldflags "-s -w -X main.version=$version" -o ryugin ./app 2>&1; echo "exit $?"; } | awk -v total="$total" '
     /^exit [0-9]+$/ { code = $2 }
     match($0, / -c [^ ]*\.cpp/) {
         n++; if (total < n) total = n; w = int(30 * n / total)
@@ -64,7 +64,7 @@ if ! { go build -x -trimpath -ldflags "-s -w -X main.version=$version" -o ryugin
     }
     BEGIN { bar = "##############################"; dots = ".............................." }
     END { if (n) print ""; exit code }'; then
-    go build -trimpath -ldflags "-s -w -X main.version=$version" -o ryugin .
+    go build -trimpath -ldflags "-s -w -X main.version=$version" -o ryugin ./app
     exit 1
 fi
 
@@ -75,7 +75,7 @@ rpmbuild -bb --target aarch64-linux --nodeps --quiet \
     --define "_topdir $PWD/.rpmbuild" --define "_rpmdir $PWD/RPMS" --define "src $PWD" \
     --define "_build_name_fmt %%{NAME}-%%{VERSION}-%%{RELEASE}.%%{ARCH}.rpm" \
     --define "debug_package %{nil}" --define "__os_install_post %{nil}" \
-    --define "_binary_payload w9.gzdio" --define "_rpmformat 4" rpm/ryugin.spec
+    --define "_binary_payload w9.gzdio" --define "_rpmformat 4" packaging/sailfish/ryugin.spec
 rm -rf .rpmbuild
 rpm=$(ls -t RPMS/ryugin-*.aarch64.rpm | head -1)
 echo "built: $rpm"

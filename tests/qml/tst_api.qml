@@ -29,17 +29,30 @@ TestCase {
         verify(u.indexOf("none") < 0, u);
     }
 
+    function test_prefetch_covers() {
+        mock.calls(true);
+        try {
+            Api.streamProxy = mock.url + "/?u=";
+            Api.prefetchCovers();
+            tryVerify(function () { return mock.called("prefetch", "getCoverArt"); }, 5000, "every album's cover, to Go");
+            verify(mock.called("prefetch", "size=" + Api.albumCover), "at AlbumCard's size");
+        } finally {
+            Api.streamProxy = "";
+        }
+    }
+
     function test_cover_and_stream() {
         compare(Api.cover("", 100), "");
         verify(Api.cover("c", 100).indexOf("getCoverArt?") > 0);
         verify(Api.cover("c", 100).indexOf("size=100") > 0);
         verify(Api.stream("s0").indexOf("stream?") > 0);
-        // Sailfish OS: an https stream goes through Go's relay; plain http does not need it.
+        // Streams and covers go through Go's relay (the cache; https on Sailfish OS).
         const url = Api.settings.url;
         try {
             Api.streamProxy = "http://127.0.0.1:9/?u=";
-            compare(Api.stream("s0").indexOf("http://127.0.0.1:"), 0, "the mock is plain http: straight");
+            compare(Api.stream("s0").indexOf("http://127.0.0.1:9/?u=http%3A%2F%2F127.0.0.1"), 0, "plain http too");
             Api.settings.url = "https://music.example";
+            verify(Api.cover("c", 100).indexOf("http://127.0.0.1:9/?u=") === 0, "covers too");
             const s = Api.stream("s0");
             compare(s.indexOf("http://127.0.0.1:9/?u=https%3A%2F%2Fmusic.example%2Frest%2Fstream%3F"), 0, s);
         } finally {
@@ -111,7 +124,27 @@ TestCase {
     }
 
     function test_all_albums() {
+        Api.known.albums = "";
         compare(result(function (cb) { Api.allAlbums(cb); })[0].length, 4);
+    }
+    // The list known comes at once (no wait, no jump), and stays when Navidrome is gone.
+    function test_all_albums_known_first() {
+        Api.known.albums = "";
+        result(function (cb) { Api.allAlbums(cb); });
+        let got = null;
+        Api.allAlbums(function (l) { got = l; });
+        verify(got !== null && got.length === 4, "at once");
+        const url = Api.settings.url;
+        try {
+            Api.settings.url = "http://127.0.0.1:9";
+            got = null;
+            Api.allAlbums(function (l) { got = l; });
+            compare(got.length, 4);
+            wait(300);
+            compare(got.length, 4, "offline: the last list stays");
+        } finally {
+            Api.settings.url = url;
+        }
     }
 
     function test_lyrics_synced() {

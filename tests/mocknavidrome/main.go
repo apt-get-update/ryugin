@@ -12,6 +12,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -74,6 +75,13 @@ func main() {
 		if r.URL.Query().Get("reset") != "" {
 			calls = nil
 		}
+	})
+	// Go's relay, as QML sees it: the covers to fetch ahead (logged as "prefetch?<body>").
+	http.HandleFunc("/prefetch", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		calls = append(calls, "prefetch?"+string(body))
+		mu.Unlock()
 	})
 	// LRCLIB: "Snow" is found by get, "Rain" only by search; both synced.
 	http.HandleFunc("/lrclib/", func(w http.ResponseWriter, r *http.Request) {

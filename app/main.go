@@ -109,7 +109,7 @@ func main() {
 	// $RYUGIN_QML, next to the binary, or the installed copy.
 	exe, _ := os.Executable()
 	dir := qmlDir(os.Getenv("RYUGIN_QML"), filepath.Join(filepath.Dir(exe), "qml"), "/usr/share/"+appID+"/qml")
-	root, bridge := loadQML(dir, sailfish)
+	root, bridge := loadQML(dir)
 	send := sender(root)
 
 	_, hasTray := newTray(dir, send)
@@ -147,16 +147,16 @@ func startQt() {
 	phoneScale()
 }
 
-// loadQML loads dir/Main.qml with goBridge (and on Sailfish OS goStreamProxy) set, and
-// returns its window and the bridge.
-func loadQML(dir string, sailfish bool) (*qt.QObject, *qt.QObject) {
+// loadQML loads dir/Main.qml with goBridge and goStreamProxy set, and returns its window
+// and the bridge.
+func loadQML(dir string) (*qt.QObject, *qt.QObject) {
 	engine := qml.NewQQmlApplicationEngine()
 	bridge := qt.NewQObject()
 	engine.RootContext().SetContextProperty("goBridge", bridge)
-	if sailfish { // streams through Go (stream.go)
-		if prefix, err := streamProxy(nil); err == nil {
-			engine.RootContext().SetContextProperty2("goStreamProxy", qt.NewQVariant14(prefix))
-		}
+	// Streams through Go (stream.go): Sailfish OS's https, and the song cache.
+	cache, _ := os.UserCacheDir()
+	if prefix, err := streamProxy(nil, filepath.Join(cache, appID)); err == nil {
+		engine.RootContext().SetContextProperty2("goStreamProxy", qt.NewQVariant14(prefix))
 	}
 	engine.LoadWithFilePath(filepath.Join(dir, "Main.qml"))
 	roots := engine.RootObjects()

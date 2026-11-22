@@ -1,0 +1,34 @@
+# Ryūgin: Navidrome player in Go + QML, built from this repo's working tree (uncommitted
+# changes included, as the Sailfish package).
+# Build: make arch-install (or cd packaging/arch && makepkg -si)
+
+pkgname=ryugin
+pkgver=1.1.0
+pkgrel=1
+pkgdesc="Navidrome player with synced lyrics (Go + QML)"
+arch=('x86_64')
+license=('AGPL-3.0-or-later')
+depends=('qt6-base' 'qt6-declarative' 'qt6-multimedia' 'qt6-multimedia-ffmpeg' 'qt6-imageformats')
+makedepends=('go' 'git')
+
+pkgver() {
+  cd "$startdir/../.."
+  git describe --tags --long | sed 's/^v//; s/-0-g.*//; s/-\([0-9]*\)-g/.r\1./'
+}
+
+build() {
+  cd "$startdir/../.."
+  rm -rf "$srcdir/$pkgname" # the old PKGBUILD's checkout: go build -o would write into it
+  export GO111MODULE=on GOFLAGS=
+  export CGO_CPPFLAGS="$CPPFLAGS" CGO_CFLAGS="$CFLAGS" CGO_CXXFLAGS="$CXXFLAGS" CGO_LDFLAGS="$LDFLAGS"
+  go build -trimpath -buildmode=pie -mod=readonly -ldflags "-s -w -X main.version=$pkgver" -o "$srcdir/$pkgname" ./app
+}
+
+package() {
+  cd "$startdir/../.."
+  install -Dm755 "$srcdir/$pkgname" "$pkgdir/usr/bin/$pkgname"
+  install -d "$pkgdir/usr/share/$pkgname"
+  cp -r qml "$pkgdir/usr/share/$pkgname/"
+  install -Dm644 "packaging/arch/$pkgname.desktop" "$pkgdir/usr/share/applications/$pkgname.desktop"
+  install -Dm644 qml/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/$pkgname.png"
+}

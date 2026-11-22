@@ -395,6 +395,36 @@ TestCase {
         Qt.application.version = "";
     }
 
+    // ---- The cache: songs off hides their size, not the covers; sizes read in MB, then GB.
+    function test_settings_cache() {
+        const page = create("SettingsPage.qml", { width: 800, height: 900 });
+        const toggle = findChild(page, "cacheToggle");
+        const limit = findChild(page, "cacheLimit");
+        try {
+            verify(toggle.checked && limit.visible);
+            mouseClick(toggle);
+            verify(!Player.settings.cache);
+            verify(!limit.visible, "off: no size");
+            page.showUsed({ songs: 5 << 20, covers: 3 * 1024 * 1024 * 1024 });
+            compare(findChild(page, "cacheSize").desc, "5 MB used");
+            compare(findChild(page, "coverCache").desc, "3.0 GB used · every album's, kept offline");
+            verify(findChild(page, "coverCache").visible, "covers: always kept");
+        } finally {
+            Player.settings.cache = true;
+        }
+    }
+
+    // ---- The close button: the phone's way out of the settings.
+    function test_settings_close() {
+        const page = create("SettingsPage.qml", { width: 800, height: 900 });
+        let closed = false;
+        page.closeRequested.connect(function () { closed = true; });
+        const x = findChild(page, "settingsClose");
+        verify(x.visible, "a server is set: it can close");
+        mouseClick(x);
+        verify(closed);
+    }
+
     // ---- The mouse wheel on the volume: 5 % a notch.
     function test_volume_wheel() {
         const w = createTemporaryObject(Qt.createComponent(Qt.resolvedUrl("../../qml/Main.qml")), root);
