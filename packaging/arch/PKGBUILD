@@ -13,7 +13,13 @@ makedepends=('go' 'git')
 
 pkgver() {
   cd "$startdir/../.."
-  git describe --tags --long | sed 's/^v//; s/-0-g.*//; s/-\([0-9]*\)-g/.r\1./'
+  # master holds one squashed commit per release, so develop never reaches the tag:
+  # count from develop's commit with the same tree as the newest tag.
+  local tag base n
+  tag=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+  base=$(git log --format='%H %T' HEAD | awk -v t="$(git rev-parse "$tag^{tree}")" '$2 == t { print $1; exit }')
+  n=$(git rev-list --count "${base:-$tag}"..HEAD)
+  if [ "$n" = 0 ]; then echo "${tag#v}"; else echo "${tag#v}.r$n.$(git rev-parse --short HEAD)"; fi
 }
 
 build() {
