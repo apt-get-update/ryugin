@@ -57,7 +57,7 @@ Rectangle {
             radius: 8
             anchors.verticalCenter: parent.verticalCenter
             coverId: bar.t ? bar.t.cover : ""
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Nav.lyrics = !Nav.lyrics }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Nav.lyrics = !Nav.lyrics; onWheel: function (e) { if (e.angleDelta.y > 0) Nav.lyrics = true; } }
         }
         Column {
             anchors.left: art.right
@@ -69,7 +69,7 @@ Rectangle {
                 width: parent.width
                 spacing: 6
                 Text { text: bar.t ? bar.t.title : ""; color: Theme.text; font.pixelSize: 14; elide: Text.ElideRight; width: Math.min(implicitWidth, parent.width - 40); anchors.verticalCenter: parent.verticalCenter }
-                IconButton { icon: "star"; iconSize: 15; active: bar.t !== null && bar.t.starred; visible: bar.t !== null; onClicked: Player.toggleStar(); anchors.verticalCenter: parent.verticalCenter }
+                IconButton { icon: bar.t && bar.t.starred ? "heart-fill" : "heart"; iconSize: 15; active: bar.t !== null && bar.t.starred; visible: bar.t !== null; onClicked: Player.toggleStar(); anchors.verticalCenter: parent.verticalCenter }
             }
             Text {
                 width: parent.width
@@ -119,7 +119,8 @@ Rectangle {
                 if (Player.settings.volume > 0) { before = Player.settings.volume; Player.setVolume(0); }
                 else Player.setVolume(before);
             }
-            MouseArea { anchors.fill: parent; acceptedButtons: Qt.NoButton; onWheel: function (e) { Player.wheelVolume(e); } }
+            // Wheel: volume; middle click: mute, as a left click.
+            MouseArea { anchors.fill: parent; acceptedButtons: Qt.MiddleButton; onClicked: mute.clicked(); onWheel: function (e) { Player.wheelVolume(e); } }
         }
         GoldSlider {
             objectName: "volume"

@@ -258,4 +258,17 @@ TestCase {
         verify(!Player.queue[1].starred);
         verify(Player.current.starred);
     }
+    function test_like_from_a_list_fills_the_heart() {
+        // A track list changes the shared object first, then calls setStarred.
+        const l = tracks(2);
+        Player.play(l, 0);
+        let told = null;
+        const f = function (id, on) { told = [id, on]; };
+        Player.liked.connect(f);
+        Player.queue[0].starred = true;
+        Player.setStarred("s0", true);
+        Player.liked.disconnect(f);
+        verify(heart.liked, "the heart fills");
+        compare(told, ["s0", true], "the lists are told");
+    }
 }

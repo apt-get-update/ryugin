@@ -92,7 +92,7 @@ Page {
         Repeater {
             model: [
                 { icon: "dices", title: "Feeling lucky", desc: "50 random songs", run: function () { Api.randomSongs(50, function (l) { Player.play(l, 0); }); } },
-                { icon: "star", title: "Favorites", desc: "Your starred songs", run: function () { Api.starredSongs(function (l) { Player.shuffle(l); }); } },
+                { icon: "heart", title: "Favorites", desc: "Your liked songs", run: function () { Api.starredSongs(function (l) { Player.shuffle(l); }); } },
                 { icon: "radio", title: "Library radio", desc: "Shuffle 500 songs", run: function () { Api.randomSongs(500, function (l) { Player.play(l, 0); }); } },
                 { icon: "mic-vocal", title: "Lyrics", desc: "Sing along", run: function () { Nav.lyrics = true; } }
             ]
@@ -127,6 +127,6 @@ Page {
     Shelf { objectName: "recentSongs"; width: parent.width; title: "Recently played"; subtitle: "Tap a song to play it, the disc for its album"; songs: Player.history }
     Shelf { objectName: "shelf"; width: parent.width; title: "Recent albums"; subtitle: "Albums you played lately"; albums: home.recent }
     Shelf { objectName: "shelf"; width: parent.width; title: "Most played"; subtitle: "Your most played albums"; albums: home.frequent }
-    Shelf { objectName: "shelf"; width: parent.width; title: "Favorites"; subtitle: "Albums you starred"; albums: home.starred }
+    Shelf { objectName: "shelf"; width: parent.width; title: "Favorites"; subtitle: "Albums you liked"; albums: home.starred }
     Shelf { objectName: "shelf"; width: parent.width; title: "Recently added"; subtitle: "New in your library"; albums: home.newest }
 }

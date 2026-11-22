@@ -8,6 +8,9 @@ import QtMultimedia
 QtObject {
     id: p
 
+    // A song was liked or unliked (track lists follow it).
+    signal liked(string songId, bool on)
+
     property var bridge: null
     property var queue: []
     property int index: -1
@@ -246,9 +249,11 @@ QtObject {
     // Star or unstar a song everywhere it is queued, and on the server.
     function setStarred(id, on) {
         // New objects: a binding on current (the heart) sees the change.
-        if (queue.some(function (t) { return t.id === id && t.starred !== on; }))
+        // A track list may have changed the shared object already: check the id only.
+        if (queue.some(function (t) { return t.id === id; }))
             queue = queue.map(function (t) { return t.id === id ? Object.assign({}, t, { starred: on }) : t; });
         Api.star(id, on);
+        liked(id, on);
     }
 
     function tick() {

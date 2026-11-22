@@ -916,7 +916,11 @@ Rectangle {
             x: 16
             anchors.verticalCenter: parent.verticalCenter
             spacing: 8
-            Btn { icon: "chevron-down"; size: 44; iconSize: 22; onClicked: Nav.lyrics = false }
+            Btn {
+                icon: "chevron-down"; size: 44; iconSize: 22; onClicked: Nav.lyrics = false
+                // Scroll down on it: out of full screen (scroll up on the bar's cover comes in).
+                MouseArea { anchors.fill: parent; acceptedButtons: Qt.NoButton; onWheel: function (e) { if (e.angleDelta.y < 0) Nav.lyrics = false; } }
+            }
             Btn {
                 size: 44
                 iconSize: 22
@@ -1011,7 +1015,10 @@ Rectangle {
                         onMoved: Player.setVolume(value)
                     }
                     Btn {
+                        id: mute
                         property real before: 0.8
+                        // Middle click: mute, as a left click.
+                        MouseArea { anchors.fill: parent; acceptedButtons: Qt.MiddleButton; onClicked: mute.clicked() }
                         icon: Player.settings.volume === 0 ? "volume-x" : Player.settings.volume < 0.5 ? "volume-1" : "volume-2"
                         onClicked: {
                             if (Player.settings.volume > 0) {
