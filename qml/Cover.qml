@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Effects
 
@@ -17,7 +18,7 @@ Item {
         anchors.fill: parent
         radius: cover.radius
         color: Theme.card
-        visible: art.opacity < 1
+        visible: img.opacity < 1
         Icon { anchors.centerIn: parent; name: "music"; size: Math.max(16, parent.height / 3); color: Theme.faint }
     }
     // Keep the old picture while a new one loads: no blink (Qt 6.8+; older Qt, as on
@@ -30,7 +31,20 @@ Item {
         sourceSize: Qt.size(cover.size, cover.size)
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
-        visible: false
+        // Fades in once loaded: covers arriving one by one do not pop.
+        opacity: cover.ready ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+        // Rounded corners: the mask as the image's own layer. A MultiEffect fed by a
+        // hidden Image drew nothing for some covers on the phone (from the cache, they load
+        // at once).
+        layer.enabled: true
+        layer.effect: MultiEffect {
+            maskEnabled: true
+            maskSource: mask
+            maskThresholdMin: 0.5
+            maskSpreadAtMin: 1.0
+        }
         onStatusChanged: {
             const bad = status === Image.Error || (status === Image.Ready && implicitWidth * implicitHeight === 0);
             if (bad && !cover.original)
@@ -45,18 +59,5 @@ Item {
         radius: cover.radius
         layer.enabled: true
         visible: false
-    }
-    // Fades in once loaded: covers arriving one by one do not pop.
-    MultiEffect {
-        id: art
-        anchors.fill: parent
-        source: img
-        maskEnabled: true
-        maskSource: mask
-        maskThresholdMin: 0.5
-        maskSpreadAtMin: 1.0
-        opacity: cover.ready ? 1 : 0
-        visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: 200 } }
     }
 }
