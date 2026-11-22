@@ -26,6 +26,8 @@ Page {
         target: Player
         // Scrobbles change "recently played": refresh after a track starts.
         function onIndexChanged() { refresh.restart(); }
+        // A like counts at once (the server has it a moment later).
+        function onLiked(songId, on) { home.favorites = Math.max(0, home.favorites + (on ? 1 : -1)); }
     }
     Timer { id: refresh; interval: 4000; onTriggered: home.load() }
     Connections { target: Api; function onLibraryChanged() { home.load(); } }
