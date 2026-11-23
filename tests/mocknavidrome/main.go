@@ -188,7 +188,20 @@ func main() {
 			for i, l := range []string{"Water over stone", "the moss remembers", "a bell, far away"} {
 				lines = append(lines, map[string]any{"start": i * 4000, "value": l})
 			}
-			ok(w, map[string]any{"lyricsList": map[string]any{"structuredLyrics": []any{map[string]any{"synced": true, "line": lines}}}})
+			// Word times for the first line (enhanced): the main voice, then a backing one.
+			cue := func(v string, s, e int) map[string]any {
+				return map[string]any{"value": v, "start": s, "byteStart": 0, "byteEnd": e}
+			}
+			words := []any{cue("Water", 0, 4), map[string]any{"value": "over", "start": 800, "byteStart": 6, "byteEnd": 9},
+				map[string]any{"value": "stone", "start": 1600, "end": 3000, "byteStart": 11, "byteEnd": 15}}
+			cueLines := []any{
+				map[string]any{"index": 0, "start": 0, "end": 3000, "value": "Water over stone", "cue": words},
+				map[string]any{"index": 0, "start": 0, "value": "ah", "cue": []any{cue("ah", 0, 1)}},
+			}
+			if q.Get("enhanced") != "true" {
+				cueLines = nil
+			}
+			ok(w, map[string]any{"lyricsList": map[string]any{"structuredLyrics": []any{map[string]any{"synced": true, "line": lines, "cueLine": cueLines}}}})
 		case "getLyrics":
 			// Plain lyrics for "Creek"; the tag as is (enhanced LRC) for "Sleet".
 			switch q.Get("title") {
