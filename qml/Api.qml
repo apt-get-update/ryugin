@@ -236,14 +236,21 @@ QtObject {
     // LRCLIB (lrclib.net, free and open). Synced beats plain.
     // cb(lines, synced): lines are { time (ms, -1 when not synced), text }.
     function lyrics(t, cb) {
-        get("getLyricsBySongId", { id: t.id }, function (e, r) {
+        // enhanced: word times come as cueLine/cue (OpenSubsonic songLyrics v2), not in the text.
+        get("getLyricsBySongId", { id: t.id, enhanced: true }, function (e, r) {
             const list = ((r && r.lyricsList && r.lyricsList.structuredLyrics) || [])
                 .filter(function (l) { return l.line && l.line.length; });
             const pick = list.find(function (l) { return l.synced; }) || list[0];
-            if (pick && pick.synced)
-                return cb(pick.line.map(function (l) {
-                    return lyricLine(Math.max(0, (l.start || 0) - (pick.offset || 0)), l.value || "", pick.offset || 0);
+            if (pick && pick.synced) {
+                const cues = {}; // line index -> its first cueLine (the main voice comes first)
+                (pick.cueLine || []).forEach(function (c) { if (!cues[c.index]) cues[c.index] = c; });
+                return cb(pick.line.map(function (l, i) {
+                    const line = lyricLine(Math.max(0, (l.start || 0) - (pick.offset || 0)), l.value || "", pick.offset || 0);
+                    if (!line.words.length && cues[i])
+                        line.words = cueWords(cues[i], pick.offset || 0);
+                    return line;
                 }), true);
+            }
             const plain = pick ? pick.line.map(function (l) { return l.value || ""; }).join("\n") : "";
             get("getLyrics", { artist: t.artist, title: t.title }, function (e2, r2) {
                 // The tag as is: LRC when the song's lyrics are synced.
@@ -438,6 +445,21 @@ QtObject {
                 words.push({ time: t, end: -1, text: parts[i + 2] });
         }
         return { time: time, text: words.length ? words.map(function (w) { return w.text; }).join("").trim() : raw.trim(), words: words };
+    }
+
+    // The words of a cueLine, as lyricLine makes them. A cue's byteStart/byteEnd are UTF-8
+    // offsets in the cueLine value; a word's text runs to the next cue, so it keeps its space.
+    function cueWords(c, offset) {
+        const bytes = unescape(encodeURIComponent(c.value || ""));
+        const ms = function (v) { return v === undefined ? -1 : Math.max(0, v - offset); };
+        return (c.cue || []).map(function (w, k, all) {
+            const next = all[k + 1];
+            let text = w.value || "";
+            try {
+                text = decodeURIComponent(escape(bytes.slice(w.byteStart, next ? next.byteStart : w.byteEnd + 1)));
+            } catch (e) {}
+            return { time: ms(w.start), end: w.end !== undefined ? ms(w.end) : next ? ms(next.start) : ms(c.end), text: text };
+        });
     }
 
     function randomSongs(size, cb) {
