@@ -1,7 +1,7 @@
 # Ryūgin for Sailfish OS (aarch64), Qt 6 (6.8) from the Chum testing repo,
 # started by qt-runner. Built by make phone: see README.adoc, "Sailfish OS".
 Name:       ryugin
-Version:    1.1.0
+Version:    1.2.0
 Release:    1
 Summary:    Navidrome player with synced lyrics (Go + Qt 6 QML)
 License:    AGPL-3.0-or-later
