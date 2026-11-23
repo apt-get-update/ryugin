@@ -153,6 +153,21 @@ TestCase {
         compare(r[0].length, 3);
         compare(r[0][1].time, 4000);
         compare(r[0][1].text, "the moss remembers");
+        // Navidrome's word times (enhanced): the main voice's cues, each word with its space
+        const w = r[0][0].words;
+        compare(w.map(function (x) { return x.text; }).join("|"), "Water |over |stone");
+        compare(w.map(function (x) { return x.time + "-" + x.end; }).join(), "0-800,800-1600,1600-3000");
+        compare(r[0][1].words.length, 0);
+    }
+
+    // Cue byte offsets are UTF-8: Japanese words cut right; a Navidrome offset moves them.
+    function test_cue_words_utf8() {
+        const w = Api.cueWords({ value: "布団 夢", end: 2000, cue: [
+            { value: "布団", start: 1000, byteStart: 0, byteEnd: 5 },
+            { value: "夢", start: 1500, byteStart: 7, byteEnd: 9 }] }, 500);
+        compare(w.map(function (x) { return x.text; }).join("|"), "布団 |夢");
+        compare(w.map(function (x) { return x.time + "-" + x.end; }).join(), "500-1000,1000-1500");
+        compare(Api.cueWords({ value: "布", cue: [{ value: "x", byteStart: 1, byteEnd: 1 }] }, 0)[0].text, "x"); // a cut inside a character: the cue's own text
     }
 
     function test_lyrics_plain_fallback() {
