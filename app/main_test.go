@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"log"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -15,7 +16,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -76,6 +79,44 @@ func TestCoverColorErrors(t *testing.T) {
 	if _, _, _, err := coverLook("http://127.0.0.1:1/none", 1000); err == nil {
 		t.Error("unreachable server gave a colour")
 	}
+}
+
+// A cover Go cannot read: said in the log, and no colour sent to QML.
+func TestCoverColorFailureLogged(t *testing.T) {
+	var buf safeBuffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	sent := make(chan map[string]any, 1)
+	fromQML(nil, func(m map[string]any) { sent <- m })(`{"coverUrl":"http://127.0.0.1:1/none","side":1000}`)
+	for i := 0; i < 100 && !strings.Contains(buf.String(), "cover colour:"); i++ {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !strings.Contains(buf.String(), "cover colour:") {
+		t.Error("the failure is not in the log")
+	}
+	select {
+	case m := <-sent:
+		t.Error("a colour was sent:", m)
+	default:
+	}
+}
+
+// safeBuffer is a bytes.Buffer the log's goroutine and the test can share.
+type safeBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *safeBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *safeBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
 
 func TestFlow(t *testing.T) {
@@ -147,7 +188,7 @@ func abs(x float64) float64 {
 }
 
 func TestMetadata(t *testing.T) {
-	m := metadata(&track{ID: "al-12/3.x", Title: "Blink", Artist: "Hiroshi Yoshimura", Album: "Green", Length: 245000000}, nil)
+	m := metadata(&track{ID: "al-12/3.x", Title: "Blink", Artist: "Hiroshi Yoshimura", Album: "Green", Length: 245000000})
 	if p := m["mpris:trackid"].Value().(dbus.ObjectPath); !p.IsValid() || !strings.HasSuffix(string(p), "tal_12_3_x") {
 		t.Errorf("track id %q is not a valid D-Bus path", p)
 	}
@@ -157,16 +198,11 @@ func TestMetadata(t *testing.T) {
 	if _, ok := m["mpris:artUrl"]; ok {
 		t.Error("artUrl set without art")
 	}
-	if metadata(&track{ID: "1", Art: "http://x/c"}, nil)["mpris:artUrl"].Value() != "http://x/c" {
+	if metadata(&track{ID: "1", Art: "http://x/c"})["mpris:artUrl"].Value() != "http://x/c" {
 		t.Error("artUrl missing")
 	}
-	// Nothing played yet in this run: only the last albums' covers (qt-runner's idle cover).
-	idle := metadata(nil, []string{"http://x/a", "http://x/b"})
-	if len(idle) != 1 || idle["qtrunner:recentArtUrls"].Value().([]string)[1] != "http://x/b" {
-		t.Errorf("idle metadata %v", idle)
-	}
-	if _, ok := m["qtrunner:recentArtUrls"]; ok {
-		t.Error("recent covers without any")
+	if len(metadata(nil)) != 0 {
+		t.Error("metadata without a song")
 	}
 }
 
@@ -270,10 +306,10 @@ func TestQMLRunsOnQt67(t *testing.T) {
 func TestQmlDir(t *testing.T) {
 	empty, full := t.TempDir(), t.TempDir()
 	os.WriteFile(filepath.Join(full, "Main.qml"), nil, 0o644)
-	if d := qmlDir("", empty, full); d != full {
+	if d := qmlDir("Main.qml", "", empty, full); d != full {
 		t.Error(d)
 	}
-	if d := qmlDir(empty); d != "" {
+	if d := qmlDir("Main.qml", empty); d != "" {
 		t.Error(d)
 	}
 }

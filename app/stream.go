@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"log"
@@ -174,13 +175,31 @@ func (c *relay) control(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, `{"songs":%d,"covers":%d}`, trim(c.songs.dir, c.songs.limit.Load()), trim(c.covers.dir, c.covers.limit.Load()))
 }
 
-// save copies res to the store as the player reads it, when it brings the whole file.
+// save copies res to the store as the player reads it, when it brings the whole file. Not
+// Navidrome's placeholder (a WebP vinyl, sent when it fails to get an album's art, at
+// times only for one size): kept, it hid the art for good. Its covers are JPEG or PNG.
 func (c *store) save(res *http.Response) {
+	if isCover(res.Request.URL) && placeholder(res) {
+		return
+	}
 	if id, total := cacheKey(res.Request.URL), whole(res); !c.off.Load() && id != "" && total != 0 {
+		_ = os.MkdirAll(c.dir, 0o755) // cleared meanwhile (Settings › Apps › Ryūgin)
 		if f, err := os.CreateTemp(c.dir, ".part-*"); err == nil {
 			res.Body = &caching{ReadCloser: res.Body, f: f, total: total, path: filepath.Join(c.dir, id), cache: c}
 		}
 	}
+}
+
+// placeholder tells a WebP picture by its first bytes ("RIFF", size, "WEBP"), which stay
+// in res's body.
+func placeholder(res *http.Response) bool {
+	b := bufio.NewReader(res.Body)
+	res.Body = struct {
+		io.Reader
+		io.Closer
+	}{b, res.Body}
+	head, _ := b.Peek(12)
+	return len(head) == 12 && string(head[:4]) == "RIFF" && string(head[8:]) == "WEBP"
 }
 
 // serve answers with the file of this id from the store, if it is there.

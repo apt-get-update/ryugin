@@ -6,7 +6,6 @@ import (
 	"os"
 	"regexp"
 	"sync"
-	"syscall"
 
 	"github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/introspect"
@@ -27,11 +26,9 @@ type playerState struct {
 	Volume   float64 `json:"volume"`
 	Seeked   bool    `json:"seeked"`
 	Track    *track  `json:"track"`
-	// The covers of the last albums played (with the track), for qt-runner's cover.
-	RecentArt []string `json:"recentArt"`
-	CanPlay   *bool    `json:"canPlay"` // false until connected to Navidrome
-	Shuffle   *bool    `json:"shuffle"`
-	Loop      string   `json:"loop"` // the repeat mode as MPRIS says it: None, Playlist, Track
+	CanPlay  *bool   `json:"canPlay"` // false until connected to Navidrome
+	Shuffle  *bool   `json:"shuffle"`
+	Loop     string  `json:"loop"` // the repeat mode as MPRIS says it: None, Playlist, Track
 }
 
 type track = struct {
@@ -43,14 +40,9 @@ type track = struct {
 	Length int64  `json:"length"`
 }
 
-// metadata is the MPRIS Metadata map for a track (nil: none yet), with the covers of the
-// last albums played under qtrunner:recentArtUrls (qt-runner's cover on Sailfish OS shows
-// them while nothing plays).
-func metadata(t *track, recent []string) map[string]dbus.Variant {
+// metadata is the MPRIS Metadata map for a track (nil: none yet).
+func metadata(t *track) map[string]dbus.Variant {
 	meta := map[string]dbus.Variant{}
-	if len(recent) > 0 {
-		meta["qtrunner:recentArtUrls"] = dbus.MakeVariant(recent)
-	}
 	if t == nil {
 		return meta
 	}
@@ -66,11 +58,10 @@ func metadata(t *track, recent []string) map[string]dbus.Variant {
 }
 
 type mpris struct {
-	conn   *dbus.Conn
-	props  *prop.Properties
-	send   func(map[string]any)
-	track  *track   // the song, for Metadata
-	recent []string // the last albums' covers, for Metadata
+	conn  *dbus.Conn
+	props *prop.Properties
+	send  func(map[string]any)
+	track *track // the song, for Metadata
 }
 
 type rootObj struct{ m *mpris }
@@ -78,7 +69,6 @@ type playerObj struct{ m *mpris }
 
 func (r rootObj) Raise() *dbus.Error {
 	r.m.send(map[string]any{"cmd": "raise"})
-	activateQtRunner(r.m.conn) // Sailfish OS: the lock screen's player shows the app
 	return nil
 }
 func (r rootObj) Quit() *dbus.Error { r.m.send(map[string]any{"cmd": "quit"}); return nil }
@@ -178,28 +168,15 @@ func newMpris(conn *dbus.Conn, send func(map[string]any)) (*mpris, error) {
 
 var notPath = regexp.MustCompile(`[^A-Za-z0-9_]`)
 
-// activateQtRunner brings the window of the qt-runner that runs this program to the front
-// (Sailfish OS; a qt-runner with org.sailfishos.qtrunner, else nothing happens).
-func activateQtRunner(conn *dbus.Conn) {
-	exe, _ := os.Executable()
-	name := "org.sailfishos.qtrunner.p" + notPath.ReplaceAllString(exe, "_")
-	conn.Object(name, "/").Go("org.sailfishos.qtrunner.activate", dbus.FlagNoReplyExpected|dbus.FlagNoAutoStart, nil)
-}
-
 func (m *mpris) update(s playerState) {
 	if s.Status != "" {
 		m.set("PlaybackStatus", s.Status)
 	}
 	m.modes(s)
 	m.props.SetMust(playerIface, "Position", s.Position)
-	if s.Track != nil || s.RecentArt != nil { // QML sends them only when they change
-		if s.Track != nil {
-			m.track = s.Track
-		}
-		if s.RecentArt != nil {
-			m.recent = s.RecentArt
-		}
-		m.props.SetMust(playerIface, "Metadata", metadata(m.track, m.recent))
+	if s.Track != nil { // QML sends it only when it changes
+		m.track = s.Track
+		m.props.SetMust(playerIface, "Metadata", metadata(m.track))
 	}
 	if s.Seeked {
 		_ = m.conn.Emit(objPath, playerIface+".Seeked", s.Position)
@@ -244,9 +221,8 @@ func playerMethods(m *mpris) []introspect.Method {
 // running is true when a copy already runs: it is asked to show its window, and this one
 // should exit (one player, one tray icon). It only asks: the name is taken by newMpris once
 // the player is exported, as Sailfish's lock screen reads it the moment the name appears
-// (and ignores a player it could not read then). Under qt-runner (sailfish), the first
-// copy's qt-runner comes to the front and this one's, an empty window, is ended.
-func running(sailfish bool) bool {
+// (and ignores a player it could not read then).
+func running() bool {
 	conn, err := sessionBus()
 	if err != nil {
 		return false
@@ -256,9 +232,5 @@ func running(sailfish bool) bool {
 		return false
 	}
 	conn.Object(busName, objPath).Call(rootIface+".Raise", 0)
-	if sailfish {
-		activateQtRunner(conn)
-		_ = syscall.Kill(os.Getppid(), syscall.SIGTERM)
-	}
 	return true
 }

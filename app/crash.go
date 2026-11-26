@@ -12,7 +12,7 @@ package main
 
 // A crash on a thread of Qt or FFmpeg (not Go's) ends the app without a word: Go
 // re-raises the signal there. This handler, installed before Go starts, so Go forwards
-// those signals to it, first writes to stderr (Sailfish OS: ~/.cache/ryugin/ryugin.log)
+// those signals to it, first writes to stderr (Sailfish OS: ~/.cache/dragon/ryugin/ryugin/ryugin.log)
 // the signal, where it happened (library, function and offset, for addr2line) and the
 // frames it can find: a backtrace stops at the signal's frame on aarch64.
 static void where(const char *what, void *pc) {

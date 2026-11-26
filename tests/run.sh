@@ -15,7 +15,8 @@ echo "PASS   : code quality (golangci-lint, qmllint)"
 # Go's coverage: the unit tests and the real program's runs below, together.
 cov="$tmp/cov"
 mkdir -p "$cov"
-go test -covermode=atomic ./app -args -test.gocoverdir="$cov"
+# No session bus: no tray, no other player (the same in a sandbox and on a desktop).
+DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent go test -covermode=atomic ./app -args -test.gocoverdir="$cov"
 
 go build -o "$tmp/mock" ./tests/mocknavidrome
 "$tmp/mock" -addr 127.0.0.1:4533 &

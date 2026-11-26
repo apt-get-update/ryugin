@@ -265,7 +265,6 @@ TestCase {
         Player.report(false, false);
         compare(JSON.parse(fakeBridge.objectName).status, "Playing");
         Player.going = false;
-        verify(Array.isArray(s.recentArt), "the last albums' covers come with the track");
         compare(s.track.id, "s0");
         compare(s.track.length, 200000000);
         verify(s.track.art.indexOf("getCoverArt") > 0);
@@ -328,13 +327,13 @@ TestCase {
         verify(!Player.playing);
         compare(Player.media.source.toString(), "", "nothing loaded");
     }
-    function test_restored_keeps_the_cover_split() {
+    function test_restored_is_no_song_for_mpris() {
         lastRun(5000);
         Player.bridge = fakeBridge;
         Player.report(true, false);
         const s = JSON.parse(fakeBridge.objectName);
-        verify(s.track === undefined, "no song for MPRIS yet: the cover shows the albums");
-        verify(Array.isArray(s.recentArt));
+        verify(s.track === undefined, "not played in this run: the home screen's card shows the albums");
+        verify(Array.isArray(Player.recentArt()));
         Player.bridge = null;
     }
     function test_play_resumes_the_restored_song() {

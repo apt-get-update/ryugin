@@ -475,15 +475,19 @@ QtObject {
     }
 
     // Navidrome's last scan: a new one (songs added, tags changed) tells the pages to
-    // reload. The first answer only sets the mark; a scan still running is waited for.
+    // reload. The first answer only sets the mark; a scan still running is asked again
+    // every 30 s, so the pages follow its end.
     property string lastScan: ""
     signal libraryChanged()
     onConfiguredChanged: lastScan = ""
+    readonly property Timer scanWait: Timer { interval: 30000; onTriggered: api.checkLibrary() }
     function checkLibrary() {
         if (!configured)
             return;
         get("getScanStatus", {}, function (e, r) {
             const s = r && r.scanStatus;
+            if (s && s.scanning)
+                scanWait.restart();
             if (!s || s.scanning || !s.lastScan)
                 return;
             const changed = lastScan !== "" && s.lastScan !== lastScan;

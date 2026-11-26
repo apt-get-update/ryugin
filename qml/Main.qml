@@ -24,7 +24,7 @@ ApplicationWindow {
         }
     }
 
-    // Sailfish OS log (~/.cache/ryugin/ryugin.log): what the window does when minimized
+    // Sailfish OS log (~/.cache/dragon/ryugin/ryugin/ryugin.log): what the window does when minimized
     // and back (a blank window then showed only the home screen's wallpaper).
     onVisibilityChanged: console.log("window: visibility", win.visibility)
     onActiveChanged: {
@@ -34,29 +34,11 @@ ApplicationWindow {
     }
     // And every 10 minutes while it is shown.
     Timer {
-        running: win.visible && !Nav.covered
+        running: win.visible
         interval: 600000
         repeat: true
         triggeredOnStart: true
         onTriggered: Api.checkLibrary()
-    }
-    // Frames made, counted on this (the GUI) thread: frameSwapped comes from the render
-    // thread, and a QML handler on it crashed the phone (Qt's threaded render loop).
-    property int frames: 0
-    property int drawn: 0
-    onAfterAnimating: { frames++; drawn++; }
-    // tests/phone.sh starts the app with --bench: frames per second, every 5 s, in front.
-    Timer {
-        objectName: "benchStats"
-        running: Qt.application.arguments.indexOf("--bench") >= 0 && win.visible && !Nav.covered
-        interval: 5000
-        repeat: true
-        onTriggered: { console.log("bench: fps", win.drawn / 5); win.drawn = 0; }
-    }
-    Timer {
-        id: frameCount
-        interval: 3000
-        onTriggered: console.log("window: frames drawn in 3 s:", win.frames, "visible", win.visible, "covered", Nav.covered)
     }
 
     // Commands from Go (MPRIS, tray, global menu).
@@ -88,10 +70,6 @@ ApplicationWindow {
                 Nav.queue = !Nav.queue;
             else
                 win.visibility === Window.FullScreen ? win.showNormal() : win.showFullScreen();
-        } else if (c.cmd === "active") { // Sailfish OS: qt-runner minimized or back
-            Nav.covered = !c.on;
-            frames = 0;
-            frameCount.restart();
         } else if (c.cmd === "backdrop") {
             Player.settings.backdrop = c.value;
         } else {
@@ -375,13 +353,5 @@ ApplicationWindow {
         Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.45) }
         enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 150 } }
         exit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 150 } }
-    }
-
-    // Sailfish OS, minimized: the home screen's card shows this; not over the fullscreen
-    // player, which the card shows as it is (the swipe's live window, then the same card).
-    CoverMode {
-        anchors.fill: parent
-        visible: Nav.covered && !Nav.lyrics
-        z: 100
     }
 }

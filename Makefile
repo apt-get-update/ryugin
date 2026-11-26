@@ -1,5 +1,6 @@
 # Ryūgin's packages and checks. `make` lists the targets.
-# Both packages build from this working tree (uncommitted changes included).
+# arch: the newest release tag; arch-git (ryugin-git) and phone: this working tree
+# (uncommitted changes included).
 # PHONE: the Jolla phone's IP or name (SSH as defaultuser), e.g. `make phone-install PHONE=10.0.0.5`.
 # QSB: Qt's shader compiler; use the one of the Qt that runs the app (an older Qt cannot
 # read a newer .qsb).
@@ -8,16 +9,19 @@ QSB ?= /usr/lib/qt6/bin/qsb
 ARCH = packaging/arch
 SAILFISH = packaging/sailfish/build.sh
 
-.PHONY: help all arch arch-install phone phone-install test bench shaders clean need-phone
+.PHONY: help all arch arch-install arch-git arch-git-install phone phone-install phone-test test bench shaders clean need-phone
 
 help:
-	@echo "make arch            Arch package ($(ARCH)/*.pkg.tar.zst)"
+	@echo "make arch            Arch package of the release ($(ARCH)/*.pkg.tar.zst)"
 	@echo "make arch-install    build and install it here"
+	@echo "make arch-git        Arch package of the working tree (ryugin-git)"
+	@echo "make arch-git-install build and install it here"
 	@echo "make phone           Sailfish OS package (RPMS/*.aarch64.rpm)"
 	@echo "make phone-install   build and install it on PHONE"
 	@echo "make all             both packages"
 	@echo "make test            lint and every test (tests/run.sh)"
-	@echo "make bench           bench on PHONE (tests/phone.sh)"
+	@echo "make phone-test      every page on PHONE, the keyboard, landscape, quitting"
+	@echo "make bench           page switches on PHONE, slow frames (PERF=1 tests/silica.sh)"
 	@echo "make shaders         compile qml/ shaders to .qsb"
 	@echo "make clean           remove the build leftovers"
 
@@ -29,6 +33,12 @@ arch:
 arch-install:
 	cd $(ARCH) && makepkg -fsi
 
+arch-git:
+	cd $(ARCH) && makepkg -f -p PKGBUILD-git
+
+arch-git-install:
+	cd $(ARCH) && makepkg -fsi -p PKGBUILD-git
+
 phone:
 	$(SAILFISH)
 
@@ -38,8 +48,13 @@ phone-install: need-phone
 test:
 	tests/run.sh
 
+phone-test: need-phone
+	PLAY=1 tests/silica.sh $(PHONE) home AlbumsPage ArtistsPage PlaylistsPage FavoritesPage SettingsPage QueuePage NowPlayingPage LyricsPage
+	NOBUILD=1 KEYBOARD=1 tests/silica.sh $(PHONE) SearchPage LoginDialog
+	NOBUILD=1 PLAY=1 LANDSCAPE=1 tests/silica.sh $(PHONE) home NowPlayingPage LyricsPage
+
 bench: need-phone
-	tests/phone.sh $(PHONE)
+	PERF=1 PLAY=1 tests/silica.sh $(PHONE)
 
 # GLSL for desktop GL and for GLES (phones: 100 es, as Qt's own shaders, or GLES will not
 # link ours with them), HLSL and MSL.

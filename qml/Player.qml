@@ -387,9 +387,7 @@ QtObject {
             seeked: seeked,
             nonce: Math.random()
         };
-        if (withTrack)
-            state.recentArt = recentArt();
-        if (withTrack && current && !restored) // restored: not yet, the cover keeps its split
+        if (withTrack && current && !restored) // restored: not played yet in this run
             state.track = {
                 id: current.id, title: current.title, artist: current.artist, album: current.album,
                 art: Api.cover(current.cover, 512), length: current.duration * 1000000
@@ -397,25 +395,27 @@ QtObject {
         bridge.objectName = JSON.stringify(state);
     }
 
-    // The covers of the last 3 albums played, for MPRIS (qt-runner's cover on Sailfish OS
-    // shows them while nothing plays, as the media player does); the server's newest
-    // albums fill in until 3 were played.
+    // The covers of the last 3 albums played, for the Sailfish home screen's card while
+    // nothing plays (as the media player's); the server's newest albums fill in until 3
+    // were played.
     property var serverCovers: []
     function recentArt() {
-        const seen = [];
-        const covers = history.map(function (s) { return s.cover; }).concat(serverCovers);
-        for (let i = 0; i < covers.length && seen.length < 3; i++)
-            if (covers[i] && seen.indexOf(covers[i]) < 0)
-                seen.push(covers[i]);
-        return seen.map(function (c) { return Api.cover(c, 512); });
+        // One per album: its songs can each have their own cover id.
+        const keys = [], art = [];
+        const all = history.map(function (s) { return [s.albumId || s.cover, s.cover]; })
+            .concat(serverCovers.map(function (c) { return [c, c]; }));
+        for (let i = 0; i < all.length && art.length < 3; i++)
+            if (all[i][1] && keys.indexOf(all[i][0]) < 0) {
+                keys.push(all[i][0]);
+                art.push(Api.cover(all[i][1], 512));
+            }
+        return art;
     }
     function lookServerCovers() {
         if (Api.configured)
             Api.albumList("newest", 3, 0, function (l) {
                 serverCovers = l.map(function (a) { return a.cover; });
-                report(true, false);
             });
-        report(true, false);
     }
     onBridgeChanged: lookServerCovers()
     readonly property Connections apiConfigured: Connections {

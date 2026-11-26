@@ -23,6 +23,7 @@ var (
 	mu       sync.Mutex
 	calls    []string
 	scans    int
+	scanning bool
 	lastScan = "2026-11-21T12:00:00Z"
 )
 
@@ -61,11 +62,15 @@ func main() {
 	var cover bytes.Buffer
 	png.Encode(&cover, img)
 
-	// A new scan of the library (getScanStatus's lastScan).
+	// A new scan of the library (getScanStatus's lastScan); ?running=1 starts one that
+	// has not ended yet.
 	http.HandleFunc("/scan", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
-		scans++
-		lastScan = fmt.Sprintf("2026-11-21T12:%02d:00Z", scans)
+		scanning = r.URL.Query().Get("running") != ""
+		if !scanning {
+			scans++
+			lastScan = fmt.Sprintf("2026-11-21T12:%02d:00Z", scans)
+		}
 		mu.Unlock()
 	})
 	http.HandleFunc("/calls", func(w http.ResponseWriter, r *http.Request) {
@@ -175,9 +180,9 @@ func main() {
 			ok(w, map[string]any{"starred2": map[string]any{"song": []any{song(1)}}})
 		case "getScanStatus":
 			mu.Lock()
-			last := lastScan
+			last, running := lastScan, scanning
 			mu.Unlock()
-			ok(w, map[string]any{"scanStatus": map[string]any{"scanning": false, "count": 1234, "lastScan": last}})
+			ok(w, map[string]any{"scanStatus": map[string]any{"scanning": running, "count": 1234, "lastScan": last}})
 		case "getLyricsBySongId":
 			// s0 has synced lyrics; the others have none here.
 			if q.Get("id") != "s0" {

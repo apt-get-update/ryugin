@@ -243,9 +243,14 @@ func TestSongCacheControl(t *testing.T) {
 // A cover (any size, sent chunked) is cached by id and size: it shows with the server gone.
 func TestCoverCache(t *testing.T) {
 	jpeg := bytes.Repeat([]byte("\xff\xd8jpeg"), 500)
+	webp := append([]byte("RIFF\x00\x10\x00\x00WEBPVP8L"), bytes.Repeat([]byte{7}, 500)...) // Navidrome's placeholder
 	navidrome := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/rest/getCoverArt" {
 			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("id") == "al-2_0" {
+			w.Write(webp)
 			return
 		}
 		w.Write(jpeg[:100])
@@ -267,7 +272,10 @@ func TestCoverCache(t *testing.T) {
 		return res.StatusCode, b
 	}
 	get("id=al-1_0&size=300")
-	get("id=al-1_0&size=../x") // not a plain size: not cached
+	get("id=al-1_0&size=../x")                                    // not a plain size: not cached
+	if _, b := get("id=al-2_0&size=300"); !bytes.Equal(b, webp) { // the placeholder: shown, not cached
+		t.Fatalf("placeholder: %d bytes", len(b))
+	}
 	for range 100 {
 		if _, err := os.Stat(filepath.Join(dir, "covers", "cover.300.al-1_0")); err == nil {
 			break
@@ -276,6 +284,25 @@ func TestCoverCache(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(filepath.Join(dir, "covers")); len(entries) != 1 {
 		t.Fatal("one cover cached:", entries)
+	}
+	// Cleared while it runs (Settings › Apps): the next cover is kept again.
+	os.RemoveAll(filepath.Join(dir, "covers"))
+	get("id=al-3_0&size=300")
+	for range 100 {
+		if _, err := os.Stat(filepath.Join(dir, "covers", "cover.300.al-3_0")); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "covers", "cover.300.al-3_0")); err != nil {
+		t.Fatal("not kept after the cache was cleared:", err)
+	}
+	get("id=al-1_0&size=300") // back in the cache too, for the check below
+	for range 100 {
+		if _, err := os.Stat(filepath.Join(dir, "covers", "cover.300.al-1_0")); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	navidrome.Close()
 	if code, b := get("id=al-1_0&size=300"); code != http.StatusOK || !bytes.Equal(b, jpeg) {

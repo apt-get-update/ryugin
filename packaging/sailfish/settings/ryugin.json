@@ -1,0 +1,13 @@
+{
+    "entries": [
+        {
+            "path": "applications/ryugin.desktop",
+            "title": "Ryūgin",
+            "type": "page",
+            "icon": "ryugin",
+            "params": {
+                "source": "/usr/share/ryugin/settings/settings.qml"
+            }
+        }
+    ]
+}

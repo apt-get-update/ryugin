@@ -456,6 +456,16 @@ TestCase {
         Api.checkLibrary();
         tryVerify(function () { return mock.called("getAlbumList2", "type=newest") && mock.called("getAlbumList2", "alphabeticalByName") && mock.called("getArtists"); }, 5000);
         verify(home.newest.length > 0 && albums.albums.length > 0, "the old lists stay while the new ones come");
+        // A scan still running: asked again on its own until it ends, then the reload.
+        mock.scan(true);
+        Api.checkLibrary();
+        tryVerify(function () { return Api.scanWait.running; }, 5000);
+        mock.calls(true);
+        Api.scanWait.interval = 100;
+        mock.scan();
+        tryVerify(function () { return mock.called("getAlbumList2", "alphabeticalByName"); }, 5000);
+        verify(!Api.scanWait.running, "the scan ended: no more asking");
+        Api.scanWait.interval = 30000;
     }
 
     // ---- Its menu again: the page is kept (no blink), scrolled to the top; from an album
@@ -588,22 +598,6 @@ TestCase {
             const p = lines.mapToItem(np, 0, 0);
             verify(p.x >= 0 && p.x + lines.width <= np.width, "lyrics fit the screen");
             verify(findChild(np, "lyricsToggle").visible, "a button shows the lyrics");
-            // Minimized on Sailfish OS: the card shows the song, big.
-            const card = findChild(w.contentItem, "coverMode");
-            verify(!card.visible);
-            Nav.covered = true;
-            const open = Nav.lyrics;
-            Nav.lyrics = true;
-            verify(!card.visible, "the fullscreen player stays as it is in the card");
-            Nav.lyrics = false;
-            verify(card.visible);
-            // All of it in the card's view: the window's top, 0.62 wide for 1 high.
-            const col = findChild(card, "coverColumn");
-            const view = Math.min(card.height, card.width / 0.62);
-            verify(col.y > 0 && col.y + col.height < view, "the card cuts the song: " + col.y + " " + col.height + " " + view);
-            compare(Math.round(col.y), Math.round(view - col.y - col.height), "centred in the card");
-            Nav.covered = false;
-            Nav.lyrics = open;
             // The playlist takes the cover's place: one fades out, then the other in.
             np.showLyrics = false;
             const ctl = findChild(np, "controlsGrid").parent, list = findChild(np, "queuePanel");
@@ -674,22 +668,6 @@ TestCase {
         }
     }
 
-    // The Sailfish OS card with nothing playing: the last song played, else the app's icon.
-    function test_cover_card_idle() {
-        const queue = Player.queue, history = Player.history;
-        Player.queue = [];
-        Player.history = [{ id: "h", title: "Last one", artist: "A", album: "B", cover: "c" }];
-        const card = createTemporaryObject(Qt.createComponent(Qt.resolvedUrl("../../qml/CoverMode.qml")), root, { width: 400, height: 800 });
-        compare(findChild(card, "coverTitle").text, "Last one");
-        compare(findChild(card, "coverNext").text, "Last played");
-        verify(!findChild(card, "coverIcon").visible);
-        Player.history = [];
-        verify(findChild(card, "coverIcon").visible, "no song yet: the app's icon");
-        compare(findChild(card, "coverTitle").text, "Ryūgin 龍吟");
-        Player.queue = queue;
-        Player.history = history;
-    }
-
     // Sailfish's ways on a phone: swipe right to go back, remorse.
     function test_phone_sailfish_ways() {
         Nav.phone = true;
@@ -743,7 +721,6 @@ TestCase {
         verify(w);
         const stack = findChild(w.contentItem, "stack");
         verify(stack);
-        compare(findChild(w, "benchStats").running, false, "no --bench: no frame log");
 
         w.go("albums");
         compare(w.section, "albums");

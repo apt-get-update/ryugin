@@ -1,0 +1,41 @@
+# Ryūgin, the latest commit: built from this repo's working tree (uncommitted changes
+# included, as the Sailfish package). The release is PKGBUILD.
+# Build: make arch-git-install (or cd packaging/arch && makepkg -sip PKGBUILD-git)
+
+pkgname=ryugin-git
+pkgver=2.0.0beta1
+pkgrel=1
+pkgdesc="Navidrome player with synced lyrics (Go + QML)"
+arch=('x86_64')
+license=('AGPL-3.0-or-later')
+depends=('qt6-base' 'qt6-declarative' 'qt6-multimedia' 'qt6-multimedia-ffmpeg' 'qt6-imageformats')
+makedepends=('go' 'git')
+provides=('ryugin')
+conflicts=('ryugin')
+
+pkgver() {
+  cd "$startdir/../.."
+  # master holds one squashed commit per release, so develop never reaches the tag:
+  # count from develop's commit with the same tree as the newest tag.
+  local tag base n
+  tag=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+  base=$(git log --format='%H %T' HEAD | awk -v t="$(git rev-parse "$tag^{tree}")" '$2 == t { print $1; exit }')
+  n=$(git rev-list --count "${base:-$tag}"..HEAD)
+  if [ "$n" = 0 ]; then echo "${tag#v}"; else echo "${tag#v}.r$n.$(git rev-parse --short HEAD)"; fi
+}
+
+build() {
+  cd "$startdir/../.."
+  export GO111MODULE=on GOFLAGS=
+  export CGO_CPPFLAGS="$CPPFLAGS" CGO_CFLAGS="$CFLAGS" CGO_CXXFLAGS="$CXXFLAGS" CGO_LDFLAGS="$LDFLAGS"
+  go build -trimpath -buildmode=pie -mod=readonly -ldflags "-s -w -X main.version=$pkgver" -o "$srcdir/$pkgname" ./app
+}
+
+package() {
+  cd "$startdir/../.."
+  install -Dm755 "$srcdir/$pkgname" "$pkgdir/usr/bin/ryugin"
+  install -d "$pkgdir/usr/share/ryugin"
+  cp -r qml "$pkgdir/usr/share/ryugin/"
+  install -Dm644 packaging/arch/ryugin.desktop "$pkgdir/usr/share/applications/ryugin.desktop"
+  install -Dm644 qml/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/ryugin.png"
+}

@@ -8,7 +8,8 @@
 # Needs go, aarch64-linux-gnu-gcc and rpm-tools here. Everything builds on this machine; the
 # SDK's engine (VirtualBox) only runs the first time, to set its target up (Chum's Qt 6) and
 # copy the phone's libraries into .sysroot/ (rm -rf .sysroot to do it again).
-# Env: SFOS (the SDK target's release, 5.1.0.11), SDK (~/SailfishOS).
+# Env: SFOS (the SDK target's release, 5.1.0.11), SDK (~/SailfishOS). The UI is the native
+# Silica one (qml-sailfish/, Keel: Silica on Qt 6).
 # A package built for an older release runs on newer phones (5.1 target, 5.2 phone); the
 # phone takes its Qt 6 from its own release's Chum.
 set -e
@@ -52,10 +53,19 @@ export PKG_CONFIG_SYSROOT_DIR="$S" PKG_CONFIG_LIBDIR="$S/usr/lib64/pkgconfig:$S/
     CGO_LDFLAGS="--sysroot=$L -B$L/usr/lib64 -L$L/usr/lib64 -Wl,-rpath-link,$L/usr/lib64 -static-libstdc++ -static-libgcc" \
     GO111MODULE=on GOOS=linux GOARCH=arm64 CGO_ENABLED=1 GOFLAGS=-buildvcs=false
 version=$(awk '/^Version:/ { print $2 }' packaging/sailfish/ryugin.spec)
+# Keel: its SailfishApp (headers, library) from Reef's repo into .keel/ (main_silica.go); the
+# phone takes Keel from the same repo. Built with Chum's Qt 6.8.4, as the SDK target's.
+K=$PWD/.keel KV=0.1.0-17 tags=silica
+if [ ! -e "$K/usr/lib64/libkeel-sailfishapp.so" ]; then
+    rm -rf "$K" && mkdir -p "$K"
+    for p in shipwright-keel-sailfishapp shipwright-keel-sailfishapp-devel; do
+        curl -fsSL "https://reefstore.app/sailfishos/5.2.0.22/aarch64/$p-$KV.aarch64.rpm" | (cd "$K" && rpm2cpio - | cpio -idm --quiet)
+    done
+fi
 # A bar over the C++ files (Qt's bindings: only the first build compiles them). On an
 # error, the build runs again without the bar to show it.
 total=$(go list -deps -f '{{range .CXXFiles}}{{println .}}{{end}}' ./app | grep -c . || true)
-if ! { go build -x -trimpath -ldflags "-s -w -X main.version=$version" -o ryugin ./app 2>&1; echo "exit $?"; } | awk -v total="$total" '
+if ! { go build -x -trimpath -tags "$tags" -ldflags "-s -w -X main.version=$version" -o ryugin ./app 2>&1; echo "exit $?"; } | awk -v total="$total" '
     /^exit [0-9]+$/ { code = $2 }
     match($0, / -c [^ ]*\.cpp/) {
         n++; if (total < n) total = n; w = int(30 * n / total)
@@ -64,7 +74,7 @@ if ! { go build -x -trimpath -ldflags "-s -w -X main.version=$version" -o ryugin
     }
     BEGIN { bar = "##############################"; dots = ".............................." }
     END { if (n) print ""; exit code }'; then
-    go build -trimpath -ldflags "-s -w -X main.version=$version" -o ryugin ./app
+    go build -trimpath -tags "$tags" -ldflags "-s -w -X main.version=$version" -o ryugin ./app
     exit 1
 fi
 
@@ -82,16 +92,13 @@ echo "built: $rpm"
 
 if [ "$1" = install ]; then
     [ -n "$2" ] || { echo "usage: $0 install PHONE" >&2; exit 1; }
-    # qt-runner (the window for Qt 6 apps), Chum's with a music cover (play/pause, next) and
-    # D-Bus activate: github.com/rinigus/qt-runner pull request, shipped with the release.
-    qtr=qt-runner-0.4.6-1.9.2.bso.mpris3.aarch64.rpm
-    [ -e "RPMS/$qtr" ] || curl -fLo "RPMS/$qtr" "https://github.com/apt-get-update/ryugin/releases/download/v1.0.0/$qtr"
-    scp "$rpm" "RPMS/$qtr" "defaultuser@$2:"
+    # Keel comes from Reef's repo, which Reef's installer adds.
+    scp "$rpm" "defaultuser@$2:"
     # Chum and its testing repo (Qt 6) for the phone's own release, once.
     ssh -t "defaultuser@$2" "devel-su sh -c '. /etc/os-release; r=\$(echo \$VERSION_ID | cut -d. -f1,2)_aarch64
         ssu lr | grep -q chum:/testing/\$r/ || { ssu ar chum https://repo.sailfishos.org/obs/sailfishos:/chum/\$r/
             ssu ar chum-testing https://repo.sailfishos.org/obs/sailfishos:/chum:/testing/\$r/; pkcon -y refresh; }
-        pkcon -y install-local $(basename "$rpm") \$(rpm -q ${qtr%.rpm} >/dev/null || echo $qtr)'"
+        pkcon -y install-local $(basename "$rpm")'"
     # A running copy is the old one, and only one runs: close it, the next start is new.
-    ssh "defaultuser@$2" 'pkill -f "^qt-runner /usr/bin/ryugin"; pkill -f "^/usr/bin/ryugin"' || true
+    ssh "defaultuser@$2" 'pkill -f "^/usr/bin/ryugin"' || true
 fi
