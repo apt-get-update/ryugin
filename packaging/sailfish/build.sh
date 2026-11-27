@@ -78,6 +78,8 @@ if ! { go build -x -trimpath -tags "$tags" -ldflags "-s -w -X main.version=$vers
     exit 1
 fi
 
+make -s qm # the translations
+
 # The package, by this machine's rpmbuild: the shaders are the committed .qsb (format 9,
 # which the phone's Qt 6.8 reads); no strip or debug package (x86 tools, arm binary).
 command -v rpmbuild >/dev/null || { echo "install rpm-tools" >&2; exit 1; }

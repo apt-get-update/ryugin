@@ -2,7 +2,7 @@
 # repo), Qt 6 (6.8) from the Chum testing repo. Built by make phone: see README.adoc,
 # "Sailfish OS".
 Name:       ryugin
-Version:    2.0.0~beta1
+Version:    2.0.0~beta2
 Release:    1
 Summary:    Navidrome player with synced lyrics (Go + Qt 6 QML)
 License:    AGPL-3.0-or-later
@@ -35,6 +35,7 @@ cd %{src}
 install -Dm755 %{name} %{buildroot}%{_bindir}/%{name}
 install -d %{buildroot}%{_datadir}/%{name}
 cp -r qml qml-sailfish %{buildroot}%{_datadir}/%{name}/ # qml-sailfish/ uses qml/'s Api, Player, Theme
+rm %{buildroot}%{_datadir}/%{name}/qml/translations/*.ts # the .qm only
 install -Dm644 packaging/sailfish/%{name}.desktop %{buildroot}%{_datadir}/applications/%{name}.desktop
 # Settings › Apps › Ryūgin: the cache, its size, clearing it.
 install -Dm644 packaging/sailfish/settings/%{name}.json %{buildroot}%{_datadir}/jolla-settings/entries/%{name}.json

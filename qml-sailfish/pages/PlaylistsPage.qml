@@ -2,17 +2,27 @@ import QtQuick 2.0
 import Sailfish.Silica 1.0
 import "../../qml" as R
 
-// Navidrome's playlists.
+// Navidrome's playlists; a long press deletes one (with time to undo).
 Page {
     id: page
 
     property var playlists: []
     property bool loaded
 
-    Component.onCompleted: R.Api.playlists(function (list) {
-        page.playlists = list
-        page.loaded = true
-    })
+    function load() {
+        R.Api.playlists(function (list) {
+            page.playlists = list
+            page.loaded = true
+        })
+    }
+
+    Component.onCompleted: load()
+
+    Connections {
+        target: R.Api
+
+        function onPlaylistsChanged() { page.load() }
+    }
 
     SilicaListView {
         anchors.fill: parent
@@ -20,12 +30,26 @@ Page {
         model: page.playlists
 
         header: PageHeader {
-            title: "Playlists"
+            //% "Playlists"
+            title: qsTrId("ryugin-he-playlists")
         }
 
         delegate: ListItem {
+            id: item
+
             contentHeight: Theme.itemSizeMedium
             onClicked: pageStack.animatorPush(Qt.resolvedUrl("PlaylistPage.qml"), { playlistId: modelData.id, name: modelData.name })
+
+            menu: ContextMenu {
+                MenuItem {
+                    //% "Delete"
+                    text: qsTrId("ryugin-me-delete")
+                    onClicked: {
+                        var id = modelData.id
+                        item.remorseDelete(function () { R.Api.deletePlaylist(id) })
+                    }
+                }
+            }
 
             Image {
                 id: art
@@ -62,14 +86,16 @@ Page {
                 Label {
                     font.pixelSize: Theme.fontSizeExtraSmall
                     color: palette.secondaryColor
-                    text: modelData.songCount + " songs"
+                    //% "%n songs"
+                    text: qsTrId("ryugin-la-n_songs", modelData.songCount)
                 }
             }
         }
 
         ViewPlaceholder {
             enabled: page.loaded && page.playlists.length === 0
-            text: "No playlists"
+            //% "No playlists"
+            text: qsTrId("ryugin-la-no_playlists")
         }
 
         BusyIndicator {

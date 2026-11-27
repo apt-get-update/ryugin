@@ -74,7 +74,7 @@ TestCase {
     // ---- Every icon name in the QML has an SVG in Icons.qml.
     function test_icon_is_drawn_at_its_size() {
         // Qt ignores sourceSize for data: URLs: the SVG must carry its pixel size.
-        const icon = create("Icon.qml", { name: "play-fill", size: 40 });
+        const icon = create("Icon.qml", { name: "heart-fill", size: 40 }) // Lucide (not in Icons.theme);
         tryCompare(icon.image, "status", Image.Ready);
         compare(icon.image.implicitWidth, 40 * (Screen.devicePixelRatio || 1));
         // A new colour (a new song) tints the same picture: no reload, no blink.
@@ -98,7 +98,7 @@ TestCase {
                     continue;
                 for (const lit of m[2].match(/"[a-z0-9-]+"/g) || []) {
                     const n = lit.slice(1, -1);
-                    if (/^[a-z]+(-[a-z0-9]+)*$/.test(n) && ["home", "albums", "artists", "playlists", "settings", "search", "lyrics", "queue"].indexOf(n) < 0) {
+                    if (/^[a-z]+(-[a-z0-9]+)*$/.test(n) && n.indexOf("ryugin-") !== 0 && ["home", "albums", "favorites", "starred", "artists", "playlists", "settings", "search", "lyrics", "queue", "navidrome", "look", "cache", "about"].indexOf(n) < 0) {
                         seen++;
                         if (!Icons.svg[n])
                             missing.push(f + ": " + n);
@@ -112,7 +112,7 @@ TestCase {
 
     function test_icon_colour_and_alpha() {
         // The SVG is white; the colour (alpha too) goes to the tint shader.
-        const icon = create("Icon.qml", { name: "star", color: Qt.rgba(1, 0, 0, 0.5) });
+        const icon = create("Icon.qml", { name: "dices", color: Qt.rgba(1, 0, 0, 0.5) }) // Lucide;
         const svg = decodeURIComponent(icon.image.source.toString());
         verify(svg.indexOf("#ffffff") > 0, svg);
         verify(!/#[0-9a-f]{8}/.test(svg), "8-digit colours break the SVG renderer");
@@ -147,22 +147,20 @@ TestCase {
         compare(openSpy.count, 0);
     }
 
-    // ---- Song cards (recently played): a click plays the songs from it, the disc its album.
+    // ---- Song cards (recently played): as every cover, a click opens the album; ▶ plays the
+    // songs from it.
     function test_song_card() {
         const tracks = albumTracks();
         const songs = [tracks[2], tracks[0]];
         const card = create("AlbumCard.qml", { song: songs[1], songs: songs });
         compare(card.children[1].text, tracks[0].title);
+        const opened = openSpy.count;
         mouseClick(card, 60, 60);
+        compare(openSpy.count, opened + 1, "the cover opens the album");
+        mouseMove(card, 60, 60);
+        mouseClick(card, card.width - 28, card.width - 28);
         compare(Player.queue.length, 2);
-        compare(Player.current.id, tracks[0].id);
-        const other = create("AlbumCard.qml", { song: tracks[1] });
-        mouseClick(other, other.width - 31, other.width - 31);
-        tryVerify(function () { return Player.queue.length === 3; }, 5000);
-        compare(Player.current.id, tracks[1].id, "the album plays from the song");
-        mouseDoubleClickSequence(other, 60, 60);
-        wait(400);
-        compare(openSpy.count, 0, "a song card never opens the album");
+        compare(Player.current.id, tracks[0].id, "▶ plays the songs from it");
     }
     function test_home_recent_songs() {
         Player.play(albumTracks(), 1);
@@ -360,31 +358,122 @@ TestCase {
         switcher.open = false;
     }
 
-    // ---- Home: the four shelves and the stats come from Navidrome.
+    // ---- Home: the three shelves come from Navidrome.
     function test_home_loads_library() {
         const home = create("HomePage.qml", { width: 1200, height: 800 });
         // Before Navidrome answers, the rows already hold their place: no jump as they come.
         const shelves = findChildren(home, "shelf");
         compare(home.recent, null);
-        verify(shelves.length === 4 && shelves.every(function (s) { return s.visible && s.loading; }), "the rows wait in place");
+        verify(shelves.length === 3 && shelves.every(function (s) { return s.visible && s.loading; }), "the rows wait in place");
         tryVerify(function () { return home.recent && home.recent.length === 4; }, 5000);
         tryVerify(function () { return home.frequent && home.frequent.length === 4; }, 5000);
-        tryVerify(function () { return home.starred && home.starred.length === 4; }, 5000);
         tryVerify(function () { return home.newest && home.newest.length === 4; }, 5000);
         verify(shelves.every(function (s) { return !s.loading; }));
-        tryCompare(home, "songs", 1234, 5000);
-        tryCompare(home, "favorites", 1, 5000);
     }
 
-    // ---- Search pill: typing searches.
+    // ---- Library › Favorites: the liked albums; the sidebar's heart plays the liked songs.
+    function test_favorites_page() {
+        const page = create("AlbumsPage.qml", { width: 1200, height: 800, type: "starred" });
+        tryVerify(function () { return page.albums.length === 4; }, 5000);
+        const side = create("Sidebar.qml", { height: 800 });
+        Player.queue = [];
+        mouseClick(findChild(side, "playFavorites"));
+        tryVerify(function () { return Player.queue.length > 0 && Player.index === 0; }, 5000, "the heart plays the liked songs");
+    }
+
+    // ---- Karaoke from the sidebar: songs mixed, karaoke on, the lyrics full screen.
+    function test_sidebar_karaoke() {
+        const side = create("Sidebar.qml", { height: 800 });
+        Player.queue = [];
+        mouseClick(findChild(side, "karaoke"));
+        tryVerify(function () { return Player.queue.length > 0 && Player.karaoke && Nav.lyrics; }, 5000);
+        Player.settings.karaoke = false;
+        Nav.lyrics = false;
+    }
+
+    // ---- A playlist: Delete asks again in place, then deletes it and goes back.
+    function test_delete_playlist() {
+        const page = create("PlaylistPage.qml", { width: 1000, height: 700, playlistId: "p1", name: "Ambient" });
+        const back = Qt.createQmlObject("import QtTest; SignalSpy { signalName: 'back' }", root);
+        back.target = Nav;
+        try {
+            findChild(page, "deletePlaylist").clicked();
+            verify(page.confirming);
+            verify(findChild(page, "confirmDelete").visible);
+            findChild(page, "confirmDelete").clicked();
+            tryCompare(back, "count", 1);
+        } finally {
+            back.destroy();
+        }
+    }
+
+    // ---- Settings › Home: rows hidden and moved, Home follows.
+    function test_home_rows() {
+        const home = create("HomePage.qml", { width: 1200, height: 800 });
+        const page = create("SettingsPage.qml", { width: 800, height: 900, section: "home" });
+        try {
+            page.showRow("frequent", false);
+            compare(findChildren(home, "shelf").length, 2, "most played hidden");
+            page.moveRow("newest", -1);
+            compare(Nav.layout.homeOrder, "recentSongs recent newest frequent");
+            page.moveTo("recentSongs", 9); // dragged past the end: last
+            compare(Nav.layout.homeOrder, "recent newest frequent recentSongs");
+            page.showRow("frequent", true);
+            compare(findChildren(home, "shelf").length, 3);
+        } finally {
+            Nav.layout.homeOrder = "recentSongs recent frequent newest";
+            Nav.layout.homeHidden = "";
+        }
+    }
+
+    // ---- The sidebar's search: typing searches.
     function test_header_search() {
-        const header = create("Header.qml", { width: 1200 });
-        const field = findChild(header, "search") || header.children[0].children[2];
+        const side = create("Sidebar.qml", { height: 800 });
+        const field = findChild(side, "sideSearch");
         field.forceActiveFocus();
         keyClick("y");
         keyClick("o");
         tryVerify(function () { return searchSpy.count >= 2; }, 2000);
         compare(searchSpy.signalArguments[searchSpy.count - 1][0], "yo");
+    }
+
+    // ---- The sidebar's Queue: opens and closes the queue, counts its songs; a liked song has a heart, × removes it.
+    function test_side_queue() {
+        Player.queue = [{ id: "s0", title: "a", artist: "b", album: "c", albumId: "a", cover: "", starred: true }];
+        try {
+            const side = create("Sidebar.qml", { height: 800 });
+            const entry = findChild(side, "sideQueue");
+            compare(entry.count, "1");
+            mouseClick(entry);
+            verify(Nav.queue);
+            mouseClick(entry);
+            verify(!Nav.queue);
+            const panel = create("QueuePanel.qml", { width: 360, height: 600 });
+            tryVerify(function () { return findChildren(panel, "").some(function (c) { return c.name === "heart-fill" && c.visible; }); }, 2000);
+            // Save as playlist: a name field; × or Escape cancels.
+            findChild(panel, "savePlaylist").clicked();
+            const name = findChild(panel, "playlistName");
+            verify(name.visible);
+            keyClick(Qt.Key_Escape);
+            verify(!name.visible, "Escape cancels");
+            findChild(panel, "savePlaylist").clicked();
+            findChild(panel, "cancelPlaylist").clicked();
+            verify(!name.visible, "× cancels");
+            // Its grip moves a song.
+            Player.queue = Player.queue.concat([{ id: "s1", title: "d", artist: "b", album: "c", albumId: "a", cover: "" }]);
+            const grips = function () { return findChildren(panel, "queueGrip").filter(function (g) { return g.parent.visible; }); };
+            tryVerify(function () { return grips().length === 2; });
+            const grip = grips().sort(function (a, b) { return a.mapToItem(panel, 0, 0).y - b.mapToItem(panel, 0, 0).y; })[0];
+            mousePress(grip, 10, 10);
+            mouseMove(grip, 10, 30);
+            mouseMove(grip, 10, 50);
+            mouseRelease(grip, 10, 50);
+            compare(Player.queue.map(function (t) { return t.id; }).join(" "), "s1 s0", "dragged down by one");
+            findChildren(panel, "queueRemove")[0].clicked(); // × takes the song out
+            compare(Player.queue.length, 1);
+        } finally {
+            Player.queue = [];
+        }
     }
 
     // ---- The preferences show the version the build set.
@@ -397,7 +486,7 @@ TestCase {
 
     // ---- The cache: songs off hides their size, not the covers; sizes read in MB, then GB.
     function test_settings_cache() {
-        const page = create("SettingsPage.qml", { width: 800, height: 900 });
+        const page = create("SettingsPage.qml", { width: 800, height: 900, section: "cache" });
         const toggle = findChild(page, "cacheToggle");
         const limit = findChild(page, "cacheLimit");
         try {
@@ -440,6 +529,26 @@ TestCase {
 
     // ---- Main window: history, search, Go commands, the tray.
     // ---- A new scan in Navidrome: the lists reload in place; the same scan, nothing.
+    // ---- Settings › Library › Scan: Navidrome scans, the pages reload at its end.
+    function test_settings_scan() {
+        Api.lastScan = "before"; // the mark of an older scan
+        const page = create("SettingsPage.qml", { width: 800, height: 900 });
+        const button = findChild(page, "scanButton");
+        verify(findChild(page, "scan").visible);
+        let changed = false;
+        const mark = function () { changed = true; };
+        Api.libraryChanged.connect(mark);
+        try {
+            mock.calls(true);
+            mouseClick(button);
+            tryVerify(function () { return mock.called("startScan"); }, 5000);
+            tryVerify(function () { return changed && !Api.scanning; }, 5000);
+            compare(Api.songTotal, 1234);
+        } finally {
+            Api.libraryChanged.disconnect(mark);
+        }
+    }
+
     function test_library_refresh() {
         const home = create("HomePage.qml", { width: 1200, height: 800 });
         const albums = create("AlbumsPage.qml", { width: 1200, height: 800 });
@@ -474,19 +583,19 @@ TestCase {
         const w = createTemporaryObject(Qt.createComponent(Qt.resolvedUrl("../../qml/Main.qml")), root, { height: 500 });
         w.go("home");
         let greeting = null;
-        tryVerify(function () { greeting = findChild(w.contentItem, "greeting"); return greeting !== null; });
+        tryVerify(function () { greeting = findChild(w.contentItem, "home"); return greeting !== null; });
         let page = greeting;
         while (page && page.contentY === undefined)
             page = page.parent;
         tryVerify(function () { return page.contentHeight > page.height; }, 5000);
         page.contentY = 300;
         w.go("home");
-        compare(findChild(w.contentItem, "greeting"), greeting, "the same page, not a new one");
+        compare(findChild(w.contentItem, "home"), greeting, "the same page, not a new one");
         tryCompare(page, "contentY", page.originY, 2000, "back to the top");
         Nav.openAlbum("a");
         w.go("home");
-        tryCompare(findChild(w.contentItem, "greeting"), "visible", true);
-        compare(findChild(w.contentItem, "greeting"), greeting, "back to the page as it was");
+        tryCompare(findChild(w.contentItem, "home"), "visible", true);
+        compare(findChild(w.contentItem, "home"), greeting, "back to the page as it was");
     }
 
     // ---- The gear opens Navidrome as a popup; a second click closes it.
@@ -578,11 +687,6 @@ TestCase {
             mouseClick(findChild(tabs, "tab-settings"));
             tryVerify(function () { return w.settingsOpen; });
             w.go("home");
-            const greeting = findChild(w.contentItem, "greeting"), stats = findChild(w.contentItem, "stats");
-            tryVerify(function () { return greeting && stats && stats.width > 0; });
-            const g = greeting.mapToItem(null, 0, 0), st = stats.mapToItem(null, 0, 0);
-            verify(st.y >= g.y + greeting.height, "the stats sit under the greeting, not on it");
-            verify(st.x + stats.width <= 432, "the stats fit the screen");
 
             const np = create("NowPlaying.qml", { width: 432, height: 900, topInset: 36 });
             verify(findChild(np, "lyricLines").mapToItem(np, 0, 0).y >= 36, "nothing under the notch");
@@ -736,6 +840,15 @@ TestCase {
         w.back();
         w.back(); // nothing left: stays
         compare(stack.depth, 1);
+
+        // The queue: docked beside the page, over the whole middle when the window is narrow.
+        const queue = findChild(w.contentItem, "queueDock"), side = findChild(w.contentItem, "sidebar");
+        Nav.queue = true;
+        w.width = 1400;
+        tryVerify(function () { return !queue.over && queue.width === Nav.layout.queueWidth; }, 2000);
+        w.width = 900;
+        tryVerify(function () { return queue.over && queue.width === w.contentItem.width - side.width; }, 2000);
+        Nav.queue = false;
 
         Nav.search("yoshi");
         compare(stack.currentItem.objectName, "search");

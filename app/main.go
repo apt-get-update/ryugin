@@ -32,12 +32,6 @@ func qmlDir(main string, dirs ...string) string {
 	return ""
 }
 
-// startQt makes the Qt application: names, 8 bits per colour.
-func startQt() {
-	qtSetup()
-	qt.NewQApplication(os.Args) // widgets, for the tray icon
-}
-
 // qtSetup sets what Qt needs before its application: names, 8 bits per colour.
 func qtSetup() {
 	qt.QCoreApplication_SetOrganizationName(appID)
@@ -56,6 +50,21 @@ func qtSetup() {
 
 // loadQML loads dir/Main.qml with goBridge and goStreamProxy set, and returns its window
 // and the bridge.
+// translate loads the texts (qsTrId in QML, qtTrId in Go) as Sailfish apps do: the English
+// (ryugin_eng_en.qm) under the system's language (ryugin-<lang>.qm), from qml/translations
+// (make ts, make qm). A missing file leaves its translator empty.
+func translate(dir string) {
+	english, local := qt.NewQTranslator(), qt.NewQTranslator()
+	english.Load4("ryugin_eng_en", dir)
+	local.Load8(qt.NewQLocale(), "ryugin", "-", dir)
+	qt.QCoreApplication_InstallTranslator(english)
+	qt.QCoreApplication_InstallTranslator(local)
+}
+
+// qtTrId is Qt's: the text for a translation id; make ts finds the calls and the English
+// in the //% comment above each.
+func qtTrId(id string) string { return qt.QCoreApplication_Translate("", id) } //nolint:revive,stylecheck // Qt's name, for lupdate
+
 func loadQML(dir string) (*qt.QObject, *qt.QObject) {
 	engine := qml.NewQQmlApplicationEngine()
 	bridge := setContext(engine.RootContext())
@@ -67,10 +76,18 @@ func loadQML(dir string) (*qt.QObject, *qt.QObject) {
 	return roots[0], bridge
 }
 
+// iconDir: the desktop theme's icons drawn as PNGs (themeIcons), for QML's goIconDir;
+// iconNames, the ones drawn (space-separated), for goIconNames. None on Sailfish OS.
+var iconDir, iconNames string
+
 // setContext gives QML goBridge and goStreamProxy, and returns the bridge.
 func setContext(ctx *qml.QQmlContext) *qt.QObject {
 	bridge := qt.NewQObject()
 	ctx.SetContextProperty("goBridge", bridge)
+	if iconDir != "" {
+		ctx.SetContextProperty2("goIconDir", qt.NewQVariant14("file://"+iconDir+"/"))
+		ctx.SetContextProperty2("goIconNames", qt.NewQVariant14(iconNames))
+	}
 	// Streams through Go (stream.go): Sailfish OS's https, and the song cache.
 	cache, _ := os.UserCacheDir()
 	if prefix, err := streamProxy(nil, filepath.Join(cache, appID)); err == nil {

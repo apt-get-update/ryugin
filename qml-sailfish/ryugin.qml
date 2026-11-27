@@ -95,7 +95,11 @@ ApplicationWindow {
             player.songPalette[name] = Qt.binding(function () { return app._palette[name] })
         })
         if (typeof goStartPage !== "undefined" && goStartPage !== "cover") { // qmllint disable unqualified
-            pageStack.push(Qt.resolvedUrl("pages/" + goStartPage + ".qml"), {}, PageStackAction.Immediate) // qmllint disable unqualified
+            // "AlbumPage?albumId=x": a page with its properties.
+            var parts = goStartPage.split("?") // qmllint disable unqualified
+            var props = {}
+            ;(parts[1] || "").split("&").forEach(function (kv) { if (kv) props[kv.split("=")[0]] = kv.split("=")[1] })
+            pageStack.push(Qt.resolvedUrl("pages/" + parts[0] + ".qml"), props, PageStackAction.Immediate)
         }
         if (typeof goShot !== "undefined") {
             _shot.start()
@@ -197,6 +201,22 @@ ApplicationWindow {
         z: 1000
         active: typeof goStartPage !== "undefined" && goStartPage === "cover" // qmllint disable unqualified
         source: app.cover
+    }
+
+    // The keyboard closed (a swipe down) takes the field's focus with it, as Silica's fields
+    // do under Qt 5 (Keel's kept it): the next tap on the field opens it again.
+    Connections {
+        target: Qt.inputMethod
+
+        function onVisibleChanged() {
+            var item = app.Window.activeFocusItem
+            while (!Qt.inputMethod.visible && item && item.focusOutBehavior === undefined) {
+                item = item.parent
+            }
+            if (!Qt.inputMethod.visible && item) {
+                item.focus = false
+            }
+        }
     }
 
     // tests/silica.sh, SCROLL=1: the page's view, where it is each frame it moves (60 s),

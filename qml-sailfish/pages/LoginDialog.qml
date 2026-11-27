@@ -29,14 +29,16 @@ Dialog {
             width: parent.width
 
             DialogHeader {
-                acceptText: "Connect"
+                //% "Connect"
+                acceptText: qsTrId("ryugin-bt-connect")
             }
 
             TextField {
                 id: url
 
                 width: parent.width
-                label: "Server address"
+                //% "Server address"
+                label: qsTrId("ryugin-la-server_address")
                 placeholderText: "https://music.example.org"
                 inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
                 text: R.Api.settings.url
@@ -47,7 +49,8 @@ Dialog {
                 id: user
 
                 width: parent.width
-                label: "User"
+                //% "User"
+                label: qsTrId("ryugin-la-user")
                 inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
                 text: R.Api.settings.user
                 EnterKey.iconSource: "image://theme/icon-m-enter-next"
@@ -66,7 +69,8 @@ Dialog {
                 width: parent.width - 2 * x
                 wrapMode: Text.Wrap
                 color: Theme.errorColor
-                text: dialog.error
+                //% "Could not connect"
+                text: qsTrId("ryugin-la-could_not_connect") + "\n" + dialog.error
             }
         }
     }

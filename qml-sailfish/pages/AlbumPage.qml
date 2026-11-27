@@ -3,13 +3,15 @@ import Sailfish.Silica 1.0
 import "../../qml" as R
 import "../components"
 
-// One album: its cover and tracks. Pull down to play, shuffle or queue it.
+// One album, as the Media player shows one: its cover edge to edge, its name, its tracks.
+// Pull down to play or queue it (shuffle: the player's push-up menu).
 Page {
     id: page
 
     property string albumId
     property var album: null
     property var tracks: []
+    readonly property bool hidden: album !== null && R.Api.hidden[album.id] !== undefined
 
     Component.onCompleted: R.Api.getAlbum(albumId, function (a, t) {
         page.album = a
@@ -29,20 +31,28 @@ Page {
 
         Pulley {
             MenuItem {
+                visible: page.album !== null
+                text: page.hidden
+                      //% "Show album"
+                      ? qsTrId("ryugin-me-show_album")
+                      //% "Hide album"
+                      : qsTrId("ryugin-me-hide_album")
+                onClicked: R.Api.hide(page.album, !page.hidden)
+            }
+            MenuItem {
                 visible: page.album !== null && page.album.artistId !== ""
-                text: "Go to artist"
+                //% "Go to artist"
+                text: qsTrId("ryugin-me-go_to_artist")
                 onClicked: pageStack.animatorPush(Qt.resolvedUrl("ArtistPage.qml"), { artistId: page.album.artistId, name: page.album.artist })
             }
             MenuItem {
-                text: "Add to queue"
+                //% "Add to queue"
+                text: qsTrId("ryugin-me-add_to_queue")
                 onClicked: R.Player.enqueue(page.tracks)
             }
             MenuItem {
-                text: "Shuffle"
-                onClicked: R.Player.shuffle(page.tracks)
-            }
-            MenuItem {
-                text: "Play"
+                //% "Play"
+                text: qsTrId("ryugin-me-play")
                 onClicked: R.Player.play(page.tracks, 0)
             }
         }
@@ -50,13 +60,8 @@ Page {
         header: Column {
             width: list.width
 
-            PageHeader {
-                title: page.album ? page.album.title : ""
-                description: page.album ? page.album.artist : ""
-            }
             Image {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
+                width: parent.width
                 height: width
                 sourceSize {
                     width: width
@@ -68,11 +73,28 @@ Page {
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * x
+                topPadding: Theme.paddingLarge
+                wrapMode: Text.Wrap
+                font.pixelSize: Theme.fontSizeLarge
+                color: palette.highlightColor
+                text: page.album ? page.album.title : ""
+            }
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
+                truncationMode: TruncationMode.Fade
+                color: palette.secondaryHighlightColor
+                text: page.album ? page.album.artist : ""
+            }
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * x
                 topPadding: Theme.paddingMedium
                 bottomPadding: Theme.paddingMedium
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: palette.secondaryHighlightColor
-                text: page.album ? [page.album.year || "", page.tracks.length + " tracks", R.Theme.time(page.album.duration)]
+                //% "%n songs"
+                text: page.album ? [page.album.year || "", qsTrId("ryugin-la-n_songs", page.tracks.length), R.Theme.time(page.album.duration)]
                                    .filter(function (x) { return x !== "" }).join("  ·  ") : ""
             }
         }

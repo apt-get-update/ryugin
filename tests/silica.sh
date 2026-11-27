@@ -9,6 +9,7 @@
 # page is each frame it moves ("scroll:"), while someone scrolls it. LANDSCAPE=1 turns
 # the device to landscape. PERF=1 opens and closes a page for 20 s and logs the slow
 # frames ("perf:"). KEYBOARD=1 opens the keyboard on the page's first text field.
+# LOCALE (e.g. en_GB.utf8): the app's language, else the phone's.
 # Each run then checks the app still runs and quits when asked (as closing its card asks),
 # and fails on a crash; the script exits 1 if any page failed.
 set -e
@@ -22,7 +23,7 @@ out=$(mktemp)
 trap 'rm -f "$out"' EXIT
 for page in "${@:-home}"; do
     [ "$page" = home ] && p= || p=$page
-    ssh "$phone" "sh -s '$p' '$PLAY' '$PAUSE' '$SCROLL' '$LANDSCAPE' '$PERF' '$KEYBOARD'" <<'EOF'
+    ssh "$phone" "sh -s '$p' '$PLAY' '$PAUSE' '$SCROLL' '$LANDSCAPE' '$PERF' '$KEYBOARD' '$LOCALE'" <<'EOF'
 dir=$HOME/ryugin-silica
 log=$HOME/.cache/dragon/ryugin/ryugin/ryugin.log
 # Until every copy is gone: one still on D-Bus makes the next show it and quit (one copy).
@@ -30,7 +31,7 @@ pkill -f '^/usr/bin/ryugin' || true; pkill -f "^$dir/ryugin" || true
 i=0; while pgrep -f "ryugin$|ryugin " >/dev/null && [ $i -lt 20 ]; do sleep 0.5; i=$((i + 1)); done
 dbus-send --system --type=method_call --dest=com.nokia.mce /com/nokia/mce/request com.nokia.mce.request.req_display_state_on
 rm -f /tmp/ryugin-shot.png "$log" # an old "shot:" would end the run at once
-. /etc/locale.conf 2>/dev/null; export LANG
+. /etc/locale.conf 2>/dev/null; [ -z "$8" ] || LANG=$8; export LANG
 RYUGIN_QML=$dir/qml-sailfish RYUGIN_PAGE=$1 RYUGIN_SHOT=/tmp/ryugin-shot.png RYUGIN_SCROLL=$4 RYUGIN_LANDSCAPE=$5 RYUGIN_PERF=$6 RYUGIN_KEYBOARD=$7 setsid "$dir/ryugin" </dev/null >/dev/null 2>&1 &
 if [ -n "$2" ]; then
     sleep 3

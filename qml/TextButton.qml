@@ -1,31 +1,26 @@
 import QtQuick
+import QtQuick.Controls
 
-// A pill button with an optional icon.
-Rectangle {
+// The desktop's push button (Kvantum draws it), with an icon from the icon theme, else Lucide.
+Item {
     id: b
-    property alias text: label.text
+    property string text
     property string icon: ""
     property bool primary: false
+    property bool flat: false // a toolbar's button
     signal clicked()
-    implicitWidth: row.implicitWidth + 32
-    implicitHeight: 36
-    radius: height / 2
-    color: primary ? (area.containsMouse ? Theme.cardHover : Theme.bright)
-                   : (area.containsMouse ? Theme.bright : Theme.card)
-    border.color: primary ? "transparent" : Theme.border
-    Behavior on color { ColorAnimation { duration: 120 } }
-    Row {
-        id: row
-        anchors.centerIn: parent
-        spacing: 8
-        Icon { name: b.icon; size: 16; color: Theme.text; visible: b.icon !== ""; anchors.verticalCenter: parent.verticalCenter }
-        Text { id: label; color: Theme.text; font.pixelSize: 14; font.weight: Font.Medium; anchors.verticalCenter: parent.verticalCenter }
-    }
-    MouseArea {
-        id: area
+    implicitWidth: btn.implicitWidth
+    implicitHeight: btn.implicitHeight
+    Button {
+        id: btn
         anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
+        text: b.text
+        highlighted: b.primary
+        flat: b.flat
+        icon.name: Icons.theme[b.icon] || ""
+        // Not in the theme: Lucide's, in the button's text colour.
+        icon.source: Icons.theme[b.icon] ? "" : Icons.url(b.icon, 16)
+        icon.color: Icons.theme[b.icon] ? "transparent" : palette.buttonText
         onClicked: b.clicked()
     }
 }

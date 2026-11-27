@@ -28,7 +28,8 @@ Page {
 
         header: PageHeader {
             title: page.name
-            description: page.loaded ? page.albums.length + " albums" : ""
+            //% "%n albums"
+            description: page.loaded ? qsTrId("ryugin-la-n_albums", page.albums.length) : ""
         }
 
         delegate: AlbumTile {

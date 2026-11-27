@@ -39,6 +39,7 @@ func main() {
 		return
 	}
 	logFile()
+	emojiFont()
 	qtSetup()
 	// The keyboard's Qt 6 plugin (Maliit, Sailfish's) needs a container's D-Bus link
 	// (container.go); started directly, Ryūgin serves it. Without one it crashed as the
@@ -57,6 +58,7 @@ func main() {
 	exe, _ := os.Executable()
 	dir := qmlDir("ryugin.qml", os.Getenv("RYUGIN_QML"),
 		filepath.Join(filepath.Dir(exe), "qml-sailfish"), "/usr/share/"+appID+"/qml-sailfish")
+	translate(filepath.Join(filepath.Dir(dir), "qml", "translations")) // qml-sailfish/ uses qml/'s
 	ctx := qml.UnsafeNewQQmlContext(C.silica_view())
 	bridge := setContext(ctx)
 	// tests/silica.sh: the page to open first, and where to save the window's picture.
@@ -130,5 +132,33 @@ func logFile() {
 	os.Rename(p, p+".old")
 	if f, err := os.Create(p); err == nil {
 		_ = syscall.Dup3(int(f.Fd()), 2, 0) // failed: stderr as it was
+	}
+}
+
+// emojiFont: emoji in titles drawn in colour. Qt 6.8 asks fontconfig for its emoji font,
+// which can be one it cannot draw (Twitter Color Emoji, SVG in OpenType): the emoji showed
+// nothing. The app's own fontconfig file (the system's, then this) skips that one, and Noto
+// Emoji (black and white, taken next), and puts Noto Color Emoji (COLRv1, which Qt draws)
+// first. Before Qt starts.
+func emojiFont() {
+	if os.Getenv("FONTCONFIG_FILE") != "" {
+		return
+	}
+	cache, _ := os.UserCacheDir()
+	conf := filepath.Join(cache, "fonts.conf")
+	_ = os.MkdirAll(cache, 0o755)
+	err := os.WriteFile(conf, []byte(`<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
+  <selectfont><rejectfont><glob>*TwitterColorEmoji*</glob><glob>*/NotoEmoji-*</glob></rejectfont></selectfont>
+  <match target="pattern">
+    <test name="family"><string>emoji</string></test>
+    <edit name="family" mode="prepend_first" binding="strong"><string>Noto Color Emoji</string></edit>
+  </match>
+</fontconfig>
+`), 0o644)
+	if err == nil {
+		os.Setenv("FONTCONFIG_FILE", conf)
 	}
 }

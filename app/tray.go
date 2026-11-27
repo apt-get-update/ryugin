@@ -17,13 +17,13 @@ func newTray(dir string, send func(map[string]any)) (*qt.QSystemTrayIcon, bool) 
 
 	menu := qt.NewQMenu2()
 	fill(menu, send,
-		item{"Show / hide", cmd("toggleWindow")},
+		item{ /*% "Show / hide" */ qtTrId("ryugin-me-show_hide"), cmd("toggleWindow")},
 		item{},
-		item{"Play / pause", cmd("playPause")},
-		item{"Next", cmd("next")},
-		item{"Previous", cmd("previous")},
+		item{ /*% "Play / pause" */ qtTrId("ryugin-me-play_pause"), cmd("playPause")},
+		item{ /*% "Next" */ qtTrId("ryugin-me-next"), cmd("next")},
+		item{ /*% "Previous" */ qtTrId("ryugin-me-previous"), cmd("previous")},
 		item{},
-		item{"Quit", cmd("quit")})
+		item{ /*% "Quit" */ qtTrId("ryugin-me-quit"), cmd("quit")})
 	tray.SetContextMenu(menu)
 
 	tray.OnActivated(func(reason qt.QSystemTrayIcon__ActivationReason) {

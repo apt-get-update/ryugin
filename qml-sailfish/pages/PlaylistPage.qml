@@ -9,7 +9,8 @@ TracksPage {
     property string name
 
     title: name
-    empty: "Empty playlist"
+    //% "Empty playlist"
+    empty: qsTrId("ryugin-la-empty_playlist")
     Component.onCompleted: R.Api.getPlaylist(playlistId, function (list) {
         page.tracks = list
         page.loaded = true

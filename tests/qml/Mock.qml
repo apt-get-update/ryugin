@@ -25,6 +25,12 @@ QtObject {
         xhr.open("GET", url + "/scan" + (running ? "?running=1" : ""), false);
         xhr.send();
     }
+    // Go's relay says the network is mobile data (on), or not.
+    function meter(on) {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", url + "/meter" + (on ? "?on=1" : ""), false);
+        xhr.send();
+    }
     function called(method, part) {
         return calls(false).some(function (c) { return c.startsWith(method + "?") && (!part || c.indexOf(part) >= 0); });
     }

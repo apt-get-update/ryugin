@@ -22,6 +22,33 @@ QtObject {
         property string albums: "" // JSON; "" not known yet
     }
     readonly property Known known: Known {}
+    // The albums hidden, by id: rated 1 star on Navidrome (so the phone and the desktop
+    // agree), as allAlbums' list knows them. Their songs are left out of every list but
+    // their album's and the playlists.
+    readonly property var hidden: {
+        const h = {};
+        try {
+            for (const a of JSON.parse(known.albums || "[]"))
+                if (a.rating === 1)
+                    h[a.id] = a;
+        } catch (e) {}
+        return h;
+    }
+    function shown(albums) {
+        return albums.filter(function (a) { return a.rating !== 1 && !hidden[a.id]; });
+    }
+    function heard(tracks) {
+        return tracks.filter(function (t) { return !hidden[t.albumId]; });
+    }
+    // Hide an album (on: 1 star), or show it again (no stars); the pages load again.
+    function hide(a, on) {
+        get("setRating", { id: a.id, rating: on ? 1 : 0 });
+        const all = JSON.parse(known.albums || "[]");
+        if (!all.some(function (b) { return b.id === a.id; }))
+            all.push(a);
+        known.albums = JSON.stringify(all.map(function (b) { return b.id === a.id ? Object.assign({}, b, { rating: on ? 1 : 0 }) : b; }));
+        libraryChanged();
+    }
     readonly property bool configured: settings.url !== "" && settings.user !== "" && settings.token !== ""
     property bool online: false
     property string error: ""
@@ -43,7 +70,7 @@ QtObject {
             + "&v=1.16.1&c=ryugin&f=json";
         for (const k in params)
             if (params[k] !== undefined)
-                q += "&" + k + "=" + encodeURIComponent(params[k]);
+                q += [].concat(params[k]).map(function (v) { return "&" + k + "=" + encodeURIComponent(v); }).join("");
         return settings.url + "/rest/" + method + "?" + q;
     }
 
@@ -58,9 +85,9 @@ QtObject {
             } catch (e) {}
             if (!r) {
                 api.online = false;
-                api.error = xhr.status ? "HTTP " + xhr.status : "No answer from " + settings.url;
+                api.error = xhr.status ? "HTTP " + xhr.status : /*% "No answer from %1" */ qsTrId("ryugin-la-no_answer").arg(settings.url);
             } else if (r.status !== "ok") {
-                api.error = r.error ? r.error.message : "Server error";
+                api.error = r.error ? r.error.message : /*% "Server error" */ qsTrId("ryugin-la-server_error");
                 r = null;
             } else {
                 api.online = true;
@@ -125,6 +152,32 @@ QtObject {
     function stream(id) {
         return relay(url("stream", { id: id, format: "raw", estimateContentLength: true })); // raw: seekable
     }
+    // Whether the network costs (mobile data), as Go's relay sees it; false when unknown.
+    function metered(cb) {
+        if (streamProxy === "")
+            return cb(false);
+        const xhr = new XMLHttpRequest();
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState !== XMLHttpRequest.DONE)
+                return;
+            try {
+                cb(JSON.parse(xhr.responseText).metered === true);
+            } catch (e) {
+                cb(false);
+            }
+        };
+        xhr.open("GET", streamProxy.replace("?u=", "network"));
+        xhr.send();
+    }
+    // The next song, downloaded by Go's relay once the one playing is there: it plays at
+    // once, also with the network gone meanwhile.
+    function ahead(id) {
+        if (streamProxy === "")
+            return;
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", stream(id).replace("/?u=", "/ahead?u="));
+        xhr.send();
+    }
 
     function track(s) {
         return {
@@ -144,14 +197,14 @@ QtObject {
         return {
             id: a.id, title: a.name || a.title || "", artist: a.artist || "", artistId: a.artistId || "",
             cover: a.coverArt || "", year: a.year || 0, songCount: a.songCount || 0,
-            duration: a.duration || 0, starred: !!a.starred
+            duration: a.duration || 0, starred: !!a.starred, rating: a.userRating || 0
         };
     }
 
     // recent, frequent, starred, newest, random, alphabeticalByName...
     function albumList(type, size, offset, cb) {
         get("getAlbumList2", { type: type, size: size, offset: offset || 0 }, function (e, r) {
-            cb(((r && r.albumList2 && r.albumList2.album) || []).map(album));
+            cb(shown(((r && r.albumList2 && r.albumList2.album) || []).map(album)));
         });
     }
 
@@ -159,7 +212,7 @@ QtObject {
     // also offline), then Navidrome's, only when it differs.
     function allAlbums(cb) {
         if (known.albums !== "")
-            cb(JSON.parse(known.albums));
+            cb(shown(JSON.parse(known.albums)));
         const all = [];
         const page = function (offset) {
             get("getAlbumList2", { type: "alphabeticalByName", size: 500, offset: offset }, function (e, r) {
@@ -176,7 +229,7 @@ QtObject {
                 const json = JSON.stringify(all);
                 if (json !== known.albums) {
                     known.albums = json;
-                    cb(all);
+                    cb(shown(all));
                 }
             });
         };
@@ -203,7 +256,7 @@ QtObject {
 
     function getArtist(id, cb) {
         get("getArtist", { id: id }, function (e, r) {
-            cb(r ? r.artist.name : "", ((r && r.artist.album) || []).map(album));
+            cb(r ? r.artist.name : "", shown(((r && r.artist.album) || []).map(album)));
         });
     }
 
@@ -226,8 +279,8 @@ QtObject {
             const s = (r && r.searchResult3) || {};
             cb({
                 artists: (s.artist || []).map(function (a) { return { id: a.id, name: a.name }; }),
-                albums: (s.album || []).map(album),
-                songs: (s.song || []).map(track)
+                albums: shown((s.album || []).map(album)),
+                songs: heard((s.song || []).map(track))
             });
         });
     }
@@ -464,13 +517,33 @@ QtObject {
 
     function randomSongs(size, cb) {
         get("getRandomSongs", { size: size }, function (e, r) {
-            cb(((r && r.randomSongs && r.randomSongs.song) || []).map(track));
+            cb(heard(((r && r.randomSongs && r.randomSongs.song) || []).map(track)));
+        });
+    }
+
+    // Every song: search3 with no words, 500 a page.
+    function allSongs(cb, from, got) {
+        from = from || 0;
+        get("search3", { query: "", artistCount: 0, albumCount: 0, songCount: 500, songOffset: from }, function (e, r) {
+            const l = ((r && r.searchResult3 && r.searchResult3.song) || []).map(track);
+            const all = (got || []).concat(l);
+            if (l.length === 500)
+                allSongs(cb, from + 500, all);
+            else
+                cb(heard(all));
+        });
+    }
+    // Whether Navidrome has synced lyrics for a song (its lyric files, tags and plugins);
+    // null when it did not answer.
+    function syncedOnServer(id, cb) {
+        get("getLyricsBySongId", { id: id }, function (e, r) {
+            cb(e ? null : ((r.lyricsList && r.lyricsList.structuredLyrics) || []).some(function (l) { return l.synced && l.line && l.line.length > 0; }));
         });
     }
 
     function starredSongs(cb) {
         get("getStarred2", {}, function (e, r) {
-            cb(((r && r.starred2 && r.starred2.song) || []).map(track));
+            cb(heard(((r && r.starred2 && r.starred2.song) || []).map(track)));
         });
     }
 
@@ -478,6 +551,8 @@ QtObject {
     // reload. The first answer only sets the mark; a scan still running is asked again
     // every 30 s, so the pages follow its end.
     property string lastScan: ""
+    property bool scanning: false
+    property int songTotal: 0
     signal libraryChanged()
     onConfiguredChanged: lastScan = ""
     readonly property Timer scanWait: Timer { interval: 30000; onTriggered: api.checkLibrary() }
@@ -486,14 +561,32 @@ QtObject {
             return;
         get("getScanStatus", {}, function (e, r) {
             const s = r && r.scanStatus;
-            if (s && s.scanning)
+            scanning = !!(s && s.scanning);
+            if (s && s.count)
+                songTotal = s.count;
+            if (scanning)
                 scanWait.restart();
             if (!s || s.scanning || !s.lastScan)
                 return;
             const changed = lastScan !== "" && s.lastScan !== lastScan;
+            if (lastScan === "" || changed)
+                allAlbums(function () {}); // the albums hidden elsewhere (the other device)
             lastScan = s.lastScan;
             if (changed)
                 libraryChanged();
+        });
+    }
+
+    // Asks Navidrome to scan the library now (an admin's right; cb gets the error, if any);
+    // checkLibrary then follows it to its end and the pages reload.
+    function startScan(cb) {
+        get("startScan", {}, function (e, r) {
+            if (!e) {
+                scanning = true;
+                checkLibrary();
+            }
+            if (cb)
+                cb(e);
         });
     }
 
@@ -507,6 +600,22 @@ QtObject {
         get("scrobble", { id: id, submission: submission, time: Date.now() });
     }
 
+    // A new playlist of these songs (ids); the sidebar and Playlists list it.
+    signal playlistsChanged()
+    function createPlaylist(name, ids, cb) {
+        get("createPlaylist", { name: name, songId: ids }, function (e) {
+            api.playlistsChanged();
+            if (cb)
+                cb(e);
+        });
+    }
+    function deletePlaylist(id, cb) {
+        get("deletePlaylist", { id: id }, function (e) {
+            api.playlistsChanged();
+            if (cb)
+                cb(e);
+        });
+    }
     function star(id, on) {
         get(on ? "star" : "unstar", { id: id });
     }

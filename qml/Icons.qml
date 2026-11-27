@@ -3,19 +3,59 @@ import QtQuick
 
 // Lucide icons (ISC license, https://lucide.dev), as SVG bodies; COLOR is filled in by Icon.qml.
 QtObject {
+    // The same icons in the desktop's icon theme (freedesktop names, symbolic: one colour,
+    // so a shape), used first when the theme has them; the others stay Lucide: the dice and
+    // the radio (a theme draws a gamepad and a radio button), shuffle and the three repeats
+    // (their states must read as one set).
+    property string dir: "" // the theme's icons as PNGs, drawn by Go (Main.qml sets it)
+    property var have: ({}) // the theme names drawn
+    readonly property var theme: ({
+        "chevron-left": "go-previous-symbolic", "chevron-right": "go-next-symbolic", "chevron-down": "go-down-symbolic", "chevron-up": "go-up-symbolic",
+        "disc-3": "media-optical-audio-symbolic", "house": "go-home-symbolic",
+        "mic": "audio-input-microphone-symbolic", "user": "avatar-default-symbolic", "users": "system-users-symbolic",
+        "play": "media-playback-start-symbolic", "play-fill": "media-playback-start-symbolic",
+        "pause": "media-playback-pause-symbolic", "pause-fill": "media-playback-pause-symbolic",
+        "skip-back": "media-skip-backward-symbolic", "skip-back-fill": "media-skip-backward-symbolic",
+        "skip-forward": "media-skip-forward-symbolic", "skip-forward-fill": "media-skip-forward-symbolic",
+        "plus": "list-add-symbolic", "search": "edit-find-symbolic", "settings": "emblem-system-symbolic",
+        "star": "non-starred-symbolic",
+        "volume-2": "audio-volume-high", "volume-1": "audio-volume-medium-symbolic", "volume-x": "audio-volume-muted-symbolic",
+        "x": "window-close-symbolic",
+        "trash-2": "edit-delete-symbolic", "check": "object-select-symbolic", "refresh-cw": "view-refresh-symbolic",
+        "favorite": "emblem-favorite-symbolic", "server": "network-server-symbolic", "sparkles": "color-select-symbolic",
+        "info": "help-about-symbolic", "list-ordered": "view-list-ordered-symbolic", "list-plus": "list-add-symbolic",
+        "panel-left": "view-left-pane-symbolic", "locate": "find-location-symbolic",
+        "history": "document-open-recent-symbolic"
+    })
+    // Lucide's icon as a white SVG of px pixels (it states its size: Qt ignores sourceSize
+    // for a data: URL), or "" for an unknown name.
+    // color: drawn in it (Sailfish OS: Silica does not tint a picture), else white.
+    function url(name, px, color) {
+        return draw(name, px, color, "0 0 24 24", 2);
+    }
+    // As Silica draws its icons (Sailfish OS): the shape in 69 % of the box, a 5 % line.
+    function silica(name, px, color) {
+        return draw(name, px, color, "-2.5 -2.5 29 29", 1.5);
+    }
+    function draw(name, px, color, box, line) {
+        const c = color ? String(color) : "#ffffff";
+        return svg[name] ? "data:image/svg+xml;utf8," + encodeURIComponent(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="' + px + '" height="' + px + '" viewBox="' + box + '">'
+            + svg[name].replace(/COLOR/g, c.length === 9 ? "#" + c.slice(3) : c).replace(/stroke-width="2"/g, 'stroke-width="' + line + '"')
+            + '</svg>') : ""; // #aarrggbb: no alpha
+    }
     readonly property var svg: ({
         "chevron-left": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"m15 18l-6-6l6-6\"/>",
         "chevron-right": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"m9 18l6-6l-6-6\"/>",
         "clock": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 6v6l4 2\"/></g>",
         "dices": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><rect width=\"12\" height=\"12\" x=\"2\" y=\"10\" rx=\"2\" ry=\"2\"/><path d=\"m17.92 14l3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6M6 18h.01M10 14h.01M15 6h.01M18 9h.01\"/></g>",
         "disc-3": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M6 12c0-1.7.7-3.2 1.8-4.2\"/><circle cx=\"12\" cy=\"12\" r=\"2\"/><path d=\"M18 12c0 1.7-.7 3.2-1.8 4.2\"/></g>",
-        "flame": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0a5 5 0 0 1 1-3a1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4\"/>",
+        "eye": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M2.062 12.348a1 1 0 0 1 0-.696a10.75 10.75 0 0 1 19.876 0a1 1 0 0 1 0 .696a10.75 10.75 0 0 1-19.876 0\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/></g>",
+        "eye-off": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575a1 1 0 0 1 0 .696a10.8 10.8 0 0 1-1.444 2.49m-6.41-.679a3 3 0 0 1-4.242-4.242\"/><path d=\"M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151a1 1 0 0 1 0-.696a10.75 10.75 0 0 1 4.446-5.143M2 2l20 20\"/></g>",
         "heart": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676a.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\"/>",
         "house": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\"/><path d=\"M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/></g>",
-        "key-round": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z\"/><circle cx=\"16.5\" cy=\"7.5\" r=\".5\" fill=\"COLOR\"/></g>",
         "library": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"m16 6l4 14M12 6v14M8 8v12M4 4v16\"/>",
         "list-music": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M16 5H3m8 7H3m8 7H3m18-3V5\"/><circle cx=\"18\" cy=\"16\" r=\"3\"/></g>",
-        "log-in": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"m10 17l5-5l-5-5m5 5H3m12-9h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4\"/>",
         "mic-vocal": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"m11 7.601l-5.994 8.19a1 1 0 0 0 .1 1.298l.817.818a1 1 0 0 0 1.314.087L15.09 12\"/><path d=\"M16.5 21.174C15.5 20.5 14.372 20 13 20c-2.058 0-3.928 2.356-6 2s-2.775-3.369-1.5-4.5\"/><circle cx=\"16\" cy=\"7\" r=\"5\"/></g>",
         "music": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M9 18V5l12-2v13\"/><circle cx=\"6\" cy=\"18\" r=\"3\"/><circle cx=\"18\" cy=\"16\" r=\"3\"/></g>",
         "pause": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><rect width=\"5\" height=\"18\" x=\"14\" y=\"3\" rx=\"1\"/><rect width=\"5\" height=\"18\" x=\"5\" y=\"3\" rx=\"1\"/></g>",
@@ -33,18 +73,18 @@ QtObject {
         "users": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3.128a4 4 0 0 1 0 7.744M22 21v-2a4 4 0 0 0-3-3.87\"/><circle cx=\"9\" cy=\"7\" r=\"4\"/></g>",
         "volume-2": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298zM16 9a5 5 0 0 1 0 6m3.364 3.364a9 9 0 0 0 0-12.728\"/>",
         "volume-x": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M11 4.702a.7.7 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.7.7 0 0 0 11 19.298zm5.5 9.798l5-5m-5 0l5 5\"/>",
+        "refresh-cw": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M3 12a9 9 0 0 1 9-9a9.75 9.75 0 0 1 6.74 2.74L21 8\"/><path d=\"M21 3v5h-5m5 4a9 9 0 0 1-9 9a9.75 9.75 0 0 1-6.74-2.74L3 16\"/><path d=\"M8 16H3v5\"/></g>",
+        "favorite": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676a.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\"/>",
+        "panel-left": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M9 3v18\"/></g>",
+        "chevron-up": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"m18 15l-6-6l-6 6\"/>",
+        "grip-vertical": "<g fill=\"COLOR\"><circle cx=\"9\" cy=\"5\" r=\"1.5\"/><circle cx=\"9\" cy=\"12\" r=\"1.5\"/><circle cx=\"9\" cy=\"19\" r=\"1.5\"/><circle cx=\"15\" cy=\"5\" r=\"1.5\"/><circle cx=\"15\" cy=\"12\" r=\"1.5\"/><circle cx=\"15\" cy=\"19\" r=\"1.5\"/></g>",
         "x": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M18 6L6 18M6 6l12 12\"/>",
         // SPlayer-Next's play-order: shuffle off.
         "play-order": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M2 6h16m0-4l4 4l-4 4M2 18h16m0-4l4 4l-4 4\"/>",
         "repeat": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"m17 2l4 4l-4 4\"/><path d=\"M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4l4-4\"/><path d=\"M21 13v1a4 4 0 0 1-4 4H3\"/></g>",
         "radio": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M16.247 7.761a6 6 0 0 1 0 8.478m2.828-11.306a10 10 0 0 1 0 14.134m-14.15 0a10 10 0 0 1 0-14.134m2.828 11.306a6 6 0 0 1 0-8.478\"/><circle cx=\"12\" cy=\"12\" r=\"2\"/></g>",
         "history": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M3 12a9 9 0 1 0 9-9a9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path d=\"M3 3v5h5m4-1v5l4 2\"/></g>",
-        "trending-up": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M16 7h6v6\"/><path d=\"m22 7l-8.5 8.5l-5-5L2 17\"/></g>",
-        "calendar-plus": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M16 18h6M16 2v3m3 10v6m2-9.5V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8.3M3 9h18M8 2v3\"/>",
-        "audio-lines": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M2 10v3m4-7v11m4-14v18m4-13v7m4-10v13m4-8v3\"/>",
         "text-quote": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M17 5H3m18 7H8m13 7H8m-5-7v7\"/>",
-        "maximize": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m8 0h3a2 2 0 0 0 2-2v-3\"/>",
-        "minimize": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3m8 0v-3a2 2 0 0 1 2-2h3\"/>",
         "chevron-down": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"m6 9l6 6l6-6\"/>",
         "repeat-1": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"m17 2l4 4l-4 4\"/><path d=\"M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4l4-4\"/><path d=\"M21 13v1a4 4 0 0 1-4 4H3m8-8h1v4\"/></g>",
         "locate": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M2 12h3m14 0h3M12 2v3m0 14v3\"/><circle cx=\"12\" cy=\"12\" r=\"7\"/></g>",
@@ -52,12 +92,14 @@ QtObject {
         "mic": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M12 19v3m7-12v2a7 7 0 0 1-14 0v-2\"/><rect width=\"6\" height=\"13\" x=\"9\" y=\"2\" rx=\"3\"/></g>",
         "volume-1": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298zM16 9a5 5 0 0 1 0 6\"/>",
         "check": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M20 6L9 17l-5-5\"/>",
+        "info": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 16v-4m0-4h.01\"/></g>",
+        "list-ordered": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M10 12h11M10 18h11M10 6h11M4 10h2M4 6h1v4m1 8H4c0-1 2-2 2-3s-1-1.5-2-1\"/>",
+        "list-plus": "<path fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M11 12H3m13-6H3m13 12H3m15-9v6m3-3h-6\"/>",
         "heart-fill": "<path fill=\"COLOR\" d=\"M11.288 20.2q-.363-.125-.638-.4l-1.725-1.575q-2.65-2.425-4.787-4.812T2 8.15Q2 5.8 3.575 4.225T7.5 2.65q1.325 0 2.5.562t2 1.538q.825-.975 2-1.537t2.5-.563q2.35 0 3.925 1.575T22 8.15q0 2.875-2.125 5.275T15.05 18.25l-1.7 1.55q-.275.275-.637.4t-.713.125t-.712-.125\"/>",
         "layout-template": "<g fill=\"none\" stroke=\"COLOR\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><rect width=\"18\" height=\"7\" x=\"3\" y=\"3\" rx=\"1\"/><rect width=\"9\" height=\"7\" x=\"3\" y=\"14\" rx=\"1\"/><rect width=\"5\" height=\"7\" x=\"16\" y=\"14\" rx=\"1\"/></g>",
         "play-fill": "<path fill=\"COLOR\" d=\"M7 4.6c0-1 1.1-1.6 2-1.1l11.2 6.9c.8.5.8 1.7 0 2.2L9 19.5c-.9.5-2-.1-2-1.1z\"/>",
         "pause-fill": "<rect x=\"5.5\" y=\"4\" width=\"4.5\" height=\"16\" rx=\"1.4\" fill=\"COLOR\"/><rect x=\"14\" y=\"4\" width=\"4.5\" height=\"16\" rx=\"1.4\" fill=\"COLOR\"/>",
         "skip-forward-fill": "<path fill=\"COLOR\" d=\"M4 5.4c0-.9 1-1.4 1.7-.9l10.4 6.6c.7.4.7 1.4 0 1.8L5.7 19.5c-.7.5-1.7 0-1.7-.9z\"/><rect x=\"17.6\" y=\"4.5\" width=\"2.8\" height=\"15\" rx=\"1.4\" fill=\"COLOR\"/>",
         "skip-back-fill": "<path fill=\"COLOR\" d=\"M20 5.4c0-.9-1-1.4-1.7-.9L7.9 11.1c-.7.4-.7 1.4 0 1.8l10.4 6.6c.7.5 1.7 0 1.7-.9z\"/><rect x=\"3.6\" y=\"4.5\" width=\"2.8\" height=\"15\" rx=\"1.4\" fill=\"COLOR\"/>",
-        "star-fill": "<path fill=\"COLOR\" stroke=\"COLOR\" stroke-linejoin=\"round\" stroke-width=\"1.5\" d=\"M12 2.8l2.8 5.8 6.3.9-4.6 4.4 1.1 6.3L12 17.2l-5.6 3 1.1-6.3L2.9 9.5l6.3-.9z\"/>"
     })
 }

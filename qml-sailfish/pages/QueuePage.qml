@@ -3,12 +3,44 @@ import Sailfish.Silica 1.0
 import "../../qml" as R
 import "../components"
 
-// The queue: a tap plays a song, a long press takes it out. Pull down to clear it.
+// The queue: a tap plays a song, a long press moves it (next, to the top) or takes it out;
+// a heart marks a liked song. Pull down to save it as a playlist or clear it.
 Page {
     id: page
 
     RemorsePopup {
         id: remorse
+    }
+
+    // The new playlist's name.
+    Component {
+        id: nameDialog
+
+        Dialog {
+            canAccept: name.text.trim() !== ""
+            onAccepted: R.Api.createPlaylist(name.text.trim(), R.Player.queue.map(function (t) { return t.id }))
+
+            Column {
+                width: parent.width
+
+                DialogHeader {
+                    //% "Save"
+                    acceptText: qsTrId("ryugin-bt-save")
+                }
+                TextField {
+                    id: name
+
+                    width: parent.width
+                    focus: true
+                    //% "Playlist's name"
+                    label: qsTrId("ryugin-la-playlist_s_name")
+                    placeholderText: label
+                    EnterKey.enabled: text.trim() !== ""
+                    EnterKey.iconSource: "image://theme/icon-m-enter-accept"
+                    EnterKey.onClicked: accept()
+                }
+            }
+        }
     }
 
     SilicaListView {
@@ -26,14 +58,23 @@ Page {
             enabled: R.Player.queue.length > 0
 
             MenuItem {
-                text: "Clear queue"
-                onClicked: remorse.execute("Clearing the queue", function () { R.Player.clear() })
+                //% "Save as playlist"
+                text: qsTrId("ryugin-me-save_as_playlist")
+                onClicked: pageStack.animatorPush(nameDialog)
+            }
+            MenuItem {
+                //% "Clear queue"
+                text: qsTrId("ryugin-me-clear_queue")
+                //% "Clearing the queue"
+                onClicked: remorse.execute(qsTrId("ryugin-la-clearing_the_queue"), function () { R.Player.clear() })
             }
         }
 
         header: PageHeader {
-            title: "Queue"
-            description: R.Player.queue.length + " songs"
+            //% "Queue"
+            title: qsTrId("ryugin-he-queue")
+            //% "%n songs"
+            description: qsTrId("ryugin-la-n_songs", R.Player.queue.length)
         }
 
         delegate: ListItem {
@@ -46,14 +87,27 @@ Page {
 
             menu: ContextMenu {
                 MenuItem {
-                    text: "Remove"
+                    visible: !item.current
+                    //% "Play next"
+                    text: qsTrId("ryugin-me-play_next")
+                    onClicked: R.Player.move(model.index, model.index < R.Player.index ? R.Player.index : R.Player.index + 1)
+                }
+                MenuItem {
+                    visible: model.index > 0
+                    //% "Move to top"
+                    text: qsTrId("ryugin-me-move_to_top")
+                    onClicked: R.Player.move(model.index, 0)
+                }
+                MenuItem {
+                    //% "Remove"
+                    text: qsTrId("ryugin-me-remove")
                     onClicked: R.Player.removeAt(model.index)
                 }
             }
 
             Column {
                 x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
+                width: parent.width - 2 * x - (heart.visible ? heart.width + Theme.paddingMedium : 0)
                 anchors.verticalCenter: parent.verticalCenter
 
                 Label {
@@ -70,11 +124,26 @@ Page {
                     text: modelData.artist
                 }
             }
+            Icon { // as TrackItem's
+                id: heart
+
+                anchors {
+                    right: parent.right
+                    rightMargin: Theme.horizontalPageMargin
+                    verticalCenter: parent.verticalCenter
+                }
+                visible: !!modelData.starred
+                width: Theme.iconSizeExtraSmall
+                height: width
+                source: R.Icons.silica("heart-fill", Theme.iconSizeExtraSmall, palette.highlightColor) // a heart, as on the desktop
+                color: palette.highlightColor
+            }
         }
 
         ViewPlaceholder {
             enabled: R.Player.queue.length === 0
-            text: "The queue is empty"
+            //% "The queue is empty"
+            text: qsTrId("ryugin-la-the_queue_is_empty")
         }
 
         VerticalScrollDecorator {}

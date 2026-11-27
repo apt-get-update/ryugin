@@ -1,6 +1,8 @@
 import QtQuick
-import QtQuick.Controls.Basic
+import QtQuick.Controls
 
+// The song's progress and the volume: a thin bar in the song's colour (Theme.gold), thicker
+// under the mouse. Its own drawing: a widget style (Kvantum) paints its own colours.
 Slider {
     id: s
     implicitHeight: 16

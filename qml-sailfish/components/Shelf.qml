@@ -16,7 +16,8 @@ Column {
     property ContextMenu _menu: null
 
     width: parent.width
-    visible: albums.length + songs.length > 0
+    property bool shown: true // Settings › Home can hide it
+    visible: shown && albums.length + songs.length > 0
 
     // The album's songs (of the album, or of the song's), then f(songs).
     function _withAlbum(f) {
@@ -87,7 +88,8 @@ Column {
 
         ContextMenu {
             MenuItem {
-                text: "Play"
+                //% "Play"
+                text: qsTrId("ryugin-me-play")
                 onClicked: shelf._withAlbum(function (tracks) { R.Player.play(tracks, 0) })
             }
         }
@@ -98,7 +100,8 @@ Column {
 
         ContextMenu {
             MenuItem {
-                text: "Play album"
+                //% "Play album"
+                text: qsTrId("ryugin-me-play_album")
                 onClicked: shelf._withAlbum(function (tracks, song) {
                     R.Player.play(tracks, Math.max(0, tracks.findIndex(function (t) { return t.id === song.id })))
                 })

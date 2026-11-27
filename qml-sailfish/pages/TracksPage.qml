@@ -3,8 +3,8 @@ import Sailfish.Silica 1.0
 import "../../qml" as R
 import "../components"
 
-// A list of songs under a title (a playlist, the favorites). Pull down to play, shuffle or
-// queue them. Pages that use it set title and load.
+// A list of songs under a title (a playlist, the favorites). Pull down to play or queue
+// them (shuffle: the player's push-up menu). Pages that use it set title and load.
 Page {
     id: page
 
@@ -26,22 +26,21 @@ Page {
             enabled: page.tracks.length > 0
 
             MenuItem {
-                text: "Add to queue"
+                //% "Add to queue"
+                text: qsTrId("ryugin-me-add_to_queue")
                 onClicked: R.Player.enqueue(page.tracks)
             }
             MenuItem {
-                text: "Shuffle"
-                onClicked: R.Player.shuffle(page.tracks)
-            }
-            MenuItem {
-                text: "Play"
+                //% "Play"
+                text: qsTrId("ryugin-me-play")
                 onClicked: R.Player.play(page.tracks, 0)
             }
         }
 
         header: PageHeader {
             title: page.title
-            description: page.loaded ? page.tracks.length + " songs" : ""
+            //% "%n songs"
+            description: page.loaded ? qsTrId("ryugin-la-n_songs", page.tracks.length) : ""
         }
 
         delegate: TrackItem {

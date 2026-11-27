@@ -25,6 +25,7 @@ var (
 	scans    int
 	scanning bool
 	lastScan = "2026-11-21T12:00:00Z"
+	paid     bool // on mobile data (Go's relay: network)
 )
 
 func ok(w http.ResponseWriter, body map[string]any) {
@@ -87,6 +88,24 @@ func main() {
 		mu.Lock()
 		calls = append(calls, "prefetch?"+string(body))
 		mu.Unlock()
+	})
+	// Go's relay, as QML sees it: the network (mobile data after GET /meter?on=1), and
+	// the next song to download (logged as "ahead?<song URL>").
+	http.HandleFunc("/meter", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paid = r.URL.Query().Get("on") != ""
+		mu.Unlock()
+	})
+	http.HandleFunc("/network", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		fmt.Fprintf(w, `{"metered":%t}`, paid)
+	})
+	http.HandleFunc("/ahead", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls = append(calls, "ahead?"+r.URL.Query().Get("u"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusAccepted)
 	})
 	// LRCLIB: "Snow" is found by get, "Rain" only by search; both synced.
 	http.HandleFunc("/lrclib/", func(w http.ResponseWriter, r *http.Request) {
@@ -176,8 +195,16 @@ func main() {
 				"album": albums("q-"), "song": songs()}})
 		case "getRandomSongs":
 			ok(w, map[string]any{"randomSongs": map[string]any{"song": songs()}})
+		case "createPlaylist", "deletePlaylist":
+			ok(w, map[string]any{})
 		case "getStarred2":
 			ok(w, map[string]any{"starred2": map[string]any{"song": []any{song(1)}}})
+		case "startScan": // a quick scan: done at once
+			mu.Lock()
+			scans++
+			lastScan = fmt.Sprintf("2026-11-21T12:%02d:00Z", scans)
+			mu.Unlock()
+			ok(w, map[string]any{"scanStatus": map[string]any{"scanning": true, "count": 1234}})
 		case "getScanStatus":
 			mu.Lock()
 			last, running := lastScan, scanning

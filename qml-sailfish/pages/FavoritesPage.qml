@@ -5,8 +5,10 @@ import "../../qml" as R
 TracksPage {
     id: page
 
-    title: "Favorites"
-    empty: "No liked songs yet"
+    //% "Favorites"
+    title: qsTrId("ryugin-he-favorites")
+    //% "No liked songs yet"
+    empty: qsTrId("ryugin-la-no_liked_songs_yet")
     Component.onCompleted: R.Api.starredSongs(function (list) {
         page.tracks = list
         page.loaded = true

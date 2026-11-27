@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Controls.Basic as C
+import QtQuick.Controls as C
 import QtQuick.Effects
 
 // Fullscreen player, after SPlayer-Next, with its four layouts (switched from the top
@@ -417,6 +417,7 @@ Rectangle {
                         height: view.height * 0.075
                         readonly property real big: Math.max(28, view.height * 0.05)
                         Glyph { name: Player.settings.shuffle ? "shuffle" : "play-order"; size: parent.big * 0.5; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.toggleShuffle() }
+                        Glyph { name: "mic-vocal"; x: parent.big; size: parent.big * 0.5; anchors.verticalCenter: parent.verticalCenter; dim: !Player.karaoke; onClicked: Player.toggleKaraoke() }
                         Row {
                             anchors.centerIn: parent
                             spacing: parent.width * 0.09
@@ -477,7 +478,7 @@ Rectangle {
             Text {
                 visible: lyricPanel.withData && !view.hasLyrics
                 anchors.centerIn: lines
-                text: "No lyrics"
+                text: /*% "No lyrics" */ qsTrId("ryugin-la-no_lyrics")
                 color: view.inkA(0.3)
                 font.pixelSize: view.fs * 1.2
             }
@@ -561,8 +562,8 @@ Rectangle {
             Column {
                 x: 14
                 spacing: 4
-                Text { text: "Playlist"; color: view.ink; font.pixelSize: 24; font.weight: Font.DemiBold }
-                Text { text: Player.queue.length + " songs"; color: view.inkA(0.55); font.pixelSize: 14 }
+                Text { text: /*% "Queue" */ qsTrId("ryugin-me-queue"); color: view.ink; font.pixelSize: 24; font.weight: Font.DemiBold }
+                Text { text: /*% "%n songs" */ qsTrId("ryugin-la-n_songs", Player.queue.length); color: view.inkA(0.55); font.pixelSize: 14 }
             }
             Row {
                 anchors.right: parent.right
@@ -589,7 +590,7 @@ Rectangle {
                 height: 56
                 radius: 12
                 color: view.inkA(0.16)
-                Text { anchors.centerIn: parent; text: "Clearing playlist · tap to cancel"; color: view.ink; font.pixelSize: 15 }
+                Text { anchors.centerIn: parent; text: /*% "Clearing the queue · tap to cancel" */ qsTrId("ryugin-la-clearing_the_queue_tap"); color: view.ink; font.pixelSize: 15 }
                 Rectangle { // the time left
                     anchors.bottom: parent.bottom
                     x: 12
@@ -654,7 +655,7 @@ Rectangle {
         }
     }
 
-    // ---- Top bar: lyrics toggle (Classic), collapse handle (Controls), layouts, fullscreen
+    // ---- Top bar: lyrics toggle (Classic), collapse handle (Controls), layouts
     Item {
         id: topBar
         y: view.topInset
@@ -700,12 +701,6 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 12
             Btn { objectName: "layoutButton"; visible: !Nav.phone; icon: "layout-template"; onClicked: switcher.open = !switcher.open }
-            Btn {
-                visible: !Nav.phone
-                readonly property var win: view.Window.window
-                icon: win && win.visibility === Window.FullScreen ? "minimize" : "maximize"
-                onClicked: if (win) (win.visibility === Window.FullScreen ? win.showNormal() : win.showFullScreen())
-            }
         }
     }
 
@@ -776,7 +771,7 @@ Rectangle {
             border.color: view.inkA(0.12)
         }
         MouseArea { anchors.fill: parent } // clicks inside stay inside
-        Text { id: heading; x: 14; y: 12; text: "Layout"; color: view.ink; font.pixelSize: 14; font.weight: Font.Medium }
+        Text { id: heading; x: 14; y: 12; text: /*% "Layout" */ qsTrId("ryugin-la-layout"); color: view.ink; font.pixelSize: 14; font.weight: Font.Medium }
         Grid {
             id: grid
             x: 12
@@ -785,10 +780,10 @@ Rectangle {
             spacing: 8
             Repeater {
                 model: [
-                    { id: "classic", label: "Classic" },
-                    { id: "fullCover", label: "Full cover" },
-                    { id: "fullLyric", label: "Full lyric" },
-                    { id: "controls", label: "Controls" }
+                    { id: "classic", label: /*% "Classic" */ qsTrId("ryugin-la-classic") },
+                    { id: "fullCover", label: /*% "Full cover" */ qsTrId("ryugin-la-full_cover") },
+                    { id: "fullLyric", label: /*% "Full lyric" */ qsTrId("ryugin-la-full_lyric") },
+                    { id: "controls", label: /*% "Controls" */ qsTrId("ryugin-la-controls") }
                 ]
                 delegate: Rectangle {
                     id: option
@@ -866,7 +861,7 @@ Rectangle {
                 }
             }
         }
-        Text { id: bgHeading; x: 14; y: grid.y + grid.height + 14; text: "Background"; color: view.ink; font.pixelSize: 14; font.weight: Font.Medium }
+        Text { id: bgHeading; x: 14; y: grid.y + grid.height + 14; text: /*% "Background" */ qsTrId("ryugin-la-background"); color: view.ink; font.pixelSize: 14; font.weight: Font.Medium }
         Row {
             id: backdrops
             x: 12
@@ -874,8 +869,8 @@ Rectangle {
             spacing: 8
             Repeater {
                 model: [
-                    { id: "blur", label: "Blur" },
-                    { id: "flow", label: "Flow" }
+                    { id: "blur", label: /*% "Blur" */ qsTrId("ryugin-la-blur") },
+                    { id: "flow", label: /*% "Flow" */ qsTrId("ryugin-la-flow") }
                 ]
                 delegate: Rectangle {
                     id: bgOption
@@ -928,6 +923,8 @@ Rectangle {
                 icon: view.t && view.t.starred ? "heart-fill" : "heart"
                 onClicked: Player.toggleStar()
             }
+            // Karaoke: only songs with synced lyrics play.
+            Btn { objectName: "karaoke"; size: 44; iconSize: 22; icon: "mic-vocal"; dim: !Player.karaoke; onClicked: Player.toggleKaraoke() }
         }
 
         Column { // middle: controls and progress

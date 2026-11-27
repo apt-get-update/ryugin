@@ -22,7 +22,8 @@ Page {
         quickScroll: true
 
         header: PageHeader {
-            title: "Albums"
+            //% "Albums"
+            title: qsTrId("ryugin-he-albums")
         }
 
         delegate: AlbumTile {

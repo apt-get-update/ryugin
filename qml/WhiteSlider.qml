@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Controls.Basic
+import QtQuick.Controls
 
 // A thin bar, white on the cover's colours, thicker while you touch it.
 Slider {

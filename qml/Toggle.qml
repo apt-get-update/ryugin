@@ -1,6 +1,7 @@
 import QtQuick
 
-// An on/off switch.
+// An on/off switch, in the song's colour (Theme.gold): drawn here, as a widget style
+// (Kvantum) paints its own colours.
 Rectangle {
     id: t
     property bool checked: false

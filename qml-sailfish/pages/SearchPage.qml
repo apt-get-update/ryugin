@@ -11,6 +11,13 @@ Page {
     property string query
 
     onQueryChanged: _wait.restart()
+    // The pulley's Search: the field and the keyboard ready (Keel's field alone opens no keyboard).
+    onStatusChanged: {
+        if (status === PageStatus.Active && !query) {
+            list.headerItem.field.forceActiveFocus()
+            Qt.inputMethod.show()
+        }
+    }
 
     Timer {
         id: _wait
@@ -58,14 +65,15 @@ Page {
             // Its title, as Sailfish's search pages: it also keeps the field clear of the
             // display's notch.
             PageHeader {
-                title: "Search"
+                //% "Search"
+                title: qsTrId("ryugin-he-search")
             }
             SearchField {
                 id: field
 
                 width: parent.width
-                placeholderText: "Search artists, albums, songs"
-                focus: true
+                //% "Search artists, albums, songs"
+                placeholderText: qsTrId("ryugin-ph-search_artists_albums_songs")
                 onTextChanged: page.query = text
                 EnterKey.iconSource: "image://theme/icon-m-enter-close"
                 EnterKey.onClicked: focus = false
@@ -73,7 +81,8 @@ Page {
 
             SectionHeader {
                 visible: page.result.artists.length > 0
-                text: "Artists"
+                //% "Artists"
+                text: qsTrId("ryugin-he-artists")
             }
             Repeater {
                 model: page.result.artists
@@ -94,13 +103,15 @@ Page {
             }
 
             Shelf {
-                title: "Albums"
+                //% "Albums"
+                title: qsTrId("ryugin-he-albums")
                 albums: page.result.albums
             }
 
             SectionHeader {
                 visible: page.result.songs.length > 0
-                text: "Songs"
+                //% "Songs"
+                text: qsTrId("ryugin-he-songs")
             }
         }
 

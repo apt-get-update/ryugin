@@ -6,10 +6,13 @@
 # read a newer .qsb).
 PHONE ?=
 QSB ?= /usr/lib/qt6/bin/qsb
+# lupdate: Qt 5's (Arch's Qt 6 one is built without QML); lrelease: Qt 6's.
+LUPDATE ?= /usr/bin/lupdate
+LRELEASE ?= /usr/lib/qt6/bin/lrelease
 ARCH = packaging/arch
 SAILFISH = packaging/sailfish/build.sh
 
-.PHONY: help all arch arch-install arch-git arch-git-install phone phone-install phone-test test bench shaders clean need-phone
+.PHONY: help all arch arch-install arch-git arch-git-install phone phone-install phone-test test bench shaders ts qm clean need-phone
 
 help:
 	@echo "make arch            Arch package of the release ($(ARCH)/*.pkg.tar.zst)"
@@ -22,6 +25,8 @@ help:
 	@echo "make test            lint and every test (tests/run.sh)"
 	@echo "make phone-test      every page on PHONE, the keyboard, landscape, quitting"
 	@echo "make bench           page switches on PHONE, slow frames (PERF=1 tests/silica.sh)"
+	@echo "make ts              update the translations (qml/translations/*.ts) from the code"
+	@echo "make qm              compile them for the app (build, packages and tests do it)"
 	@echo "make shaders         compile qml/ shaders to .qsb"
 	@echo "make clean           remove the build leftovers"
 
@@ -55,6 +60,20 @@ phone-test: need-phone
 
 bench: need-phone
 	PERF=1 PLAY=1 tests/silica.sh $(PHONE)
+
+# The texts (qsTrId in QML, qtTrId in Go, //% for the English) into the .ts files: ryugin.ts
+# the English, ryugin-<lang>.ts the translations; qm compiles them (main.go loads them).
+# Qt 5's lupdate reads copies without the pragma it does not know, and only the Go files
+# with texts (it reads them as C++).
+ts:
+	t=$$(mktemp -d) && for f in qml/*.qml qml-sailfish/*.qml qml-sailfish/*/*.qml app/*.go; do \
+		mkdir -p "$$t/$${f%/*}" && sed '/^pragma ComponentBehavior/d' "$$f" > "$$t/$$f"; done && \
+	(cd "$$t" && $(LUPDATE) -silent -no-obsolete -locations none qml qml-sailfish $$(grep -l 'qtTrId("' app/*.go) \
+		-ts $(CURDIR)/qml/translations/ryugin.ts $(CURDIR)/qml/translations/ryugin-*.ts); s=$$?; rm -rf "$$t"; exit $$s
+
+qm:
+	$(LRELEASE) -silent qml/translations/ryugin-*.ts
+	$(LRELEASE) -silent qml/translations/ryugin.ts -qm qml/translations/ryugin_eng_en.qm
 
 # GLSL for desktop GL and for GLES (phones: 100 es, as Qt's own shaders, or GLES will not
 # link ours with them), HLSL and MSL.

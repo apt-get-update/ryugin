@@ -41,31 +41,31 @@ func newMenuBar(send func(map[string]any)) *qt.QMenuBar {
 	bar := qt.NewQMenuBar2()
 	bar.SetNativeMenuBar(false) // a plain widget: AT-SPI shows its items
 	fill(bar.AddMenuWithTitle("Ryūgin"), send,
-		item{"Show / hide window", cmd("toggleWindow")},
+		item{ /*% "Show / hide window" */ qtTrId("ryugin-me-show_hide_window"), cmd("toggleWindow")},
 		item{},
-		item{"Quit", cmd("quit")})
-	fill(bar.AddMenuWithTitle("Playback"), send,
-		item{"Play / pause", cmd("playPause")},
-		item{"Next", cmd("next")},
-		item{"Previous", cmd("previous")},
+		item{ /*% "Quit" */ qtTrId("ryugin-me-quit"), cmd("quit")})
+	fill(bar.AddMenuWithTitle( /*% "Playback" */ qtTrId("ryugin-me-playback")), send,
+		item{ /*% "Play / pause" */ qtTrId("ryugin-me-play_pause"), cmd("playPause")},
+		item{ /*% "Next" */ qtTrId("ryugin-me-next"), cmd("next")},
+		item{ /*% "Previous" */ qtTrId("ryugin-me-previous"), cmd("previous")},
 		item{},
-		item{"Like / unlike", cmd("like")},
-		item{"Repeat: off, all, one", cmd("repeat")},
-		item{"Shuffle on / off", cmd("shuffle")},
+		item{ /*% "Like / unlike" */ qtTrId("ryugin-me-like_unlike"), cmd("like")},
+		item{ /*% "Repeat: off, all, one" */ qtTrId("ryugin-me-repeat"), cmd("repeat")},
+		item{ /*% "Shuffle on / off" */ qtTrId("ryugin-me-shuffle"), cmd("shuffle")},
+		item{ /*% "Karaoke on / off" */ qtTrId("ryugin-me-karaoke"), cmd("karaoke")},
 		item{},
-		item{"Feeling lucky", cmd("lucky")})
-	fill(bar.AddMenuWithTitle("View"), send,
-		item{"Now playing", cmd("nowPlaying")},
-		item{"Queue", cmd("queue")},
-		item{"Full screen", cmd("fullScreen")},
+		item{ /*% "Roll the dice" */ qtTrId("ryugin-la-roll_the_dice"), cmd("lucky")})
+	fill(bar.AddMenuWithTitle( /*% "View" */ qtTrId("ryugin-me-view")), send,
+		item{ /*% "Now playing" */ qtTrId("ryugin-me-now_playing"), cmd("nowPlaying")},
+		item{ /*% "Queue" */ qtTrId("ryugin-me-queue"), cmd("queue")},
 		item{},
-		item{"Blur background", cmd("backdrop", "value", "blur")},
-		item{"Flow background", cmd("backdrop", "value", "flow")})
-	fill(bar.AddMenuWithTitle("Go"), send,
-		item{"Home", cmd("go", "page", "home")},
-		item{"Albums", cmd("go", "page", "albums")},
-		item{"Artists", cmd("go", "page", "artists")},
-		item{"Playlists", cmd("go", "page", "playlists")},
+		item{ /*% "Blur background" */ qtTrId("ryugin-me-blur_background"), cmd("backdrop", "value", "blur")},
+		item{ /*% "Flow background" */ qtTrId("ryugin-me-flow_background"), cmd("backdrop", "value", "flow")})
+	fill(bar.AddMenuWithTitle( /*% "Go" */ qtTrId("ryugin-me-go")), send,
+		item{ /*% "Home" */ qtTrId("ryugin-me-home"), cmd("go", "page", "home")},
+		item{ /*% "Albums" */ qtTrId("ryugin-me-albums"), cmd("go", "page", "albums")},
+		item{ /*% "Artists" */ qtTrId("ryugin-me-artists"), cmd("go", "page", "artists")},
+		item{ /*% "Playlists" */ qtTrId("ryugin-me-playlists"), cmd("go", "page", "playlists")},
 		item{"Navidrome", cmd("go", "page", "settings")})
 	bar.WinId() // creates its window, never shown: AT-SPI lists created windows only
 	return bar

@@ -3,7 +3,7 @@ import QtQuick
 
 Page {
     id: page
-    title: "Artists"
+    title: /*% "Artists" */ qsTrId("ryugin-he-artists")
     property var artists: []
     function load() { Api.artists(function (l) { if (!page) return; page.artists = l; }); }
     Component.onCompleted: load()

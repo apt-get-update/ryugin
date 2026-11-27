@@ -3,20 +3,22 @@
 # The latest commit, uncommitted changes included: PKGBUILD-git (ryugin-git).
 
 pkgname=ryugin
-pkgver=2.0.0beta1
+pkgver=2.0.0beta2
 pkgrel=1
 pkgdesc="Navidrome player with synced lyrics (Go + QML)"
 arch=('x86_64')
 license=('AGPL-3.0-or-later')
 depends=('qt6-base' 'qt6-declarative' 'qt6-multimedia' 'qt6-multimedia-ffmpeg' 'qt6-imageformats')
-makedepends=('go' 'git')
-source=("$pkgname::git+file://${startdir%/packaging/arch}#tag=v${pkgver/beta/-beta}") # 2.0.0beta1: v2.0.0-beta1
+optdepends=('qqc2-desktop-style: controls in the desktop style (Kvantum, Breeze)')
+makedepends=('go' 'git' 'qt6-tools')
+source=("$pkgname::git+file://${startdir%/packaging/arch}#tag=v${pkgver/beta/-beta}") # 2.0.0beta2: v2.0.0-beta2
 sha256sums=('SKIP')
 
 build() {
   cd "$pkgname"
   export GO111MODULE=on GOFLAGS=
   export CGO_CPPFLAGS="$CPPFLAGS" CGO_CFLAGS="$CFLAGS" CGO_CXXFLAGS="$CXXFLAGS" CGO_LDFLAGS="$LDFLAGS"
+  make -s qm # the translations
   go build -trimpath -buildmode=pie -mod=readonly -ldflags "-s -w -X main.version=$pkgver" -o "$pkgname" ./app
 }
 
@@ -25,6 +27,7 @@ package() {
   install -Dm755 "$pkgname" "$pkgdir/usr/bin/$pkgname"
   install -d "$pkgdir/usr/share/$pkgname"
   cp -r qml "$pkgdir/usr/share/$pkgname/"
+  rm "$pkgdir/usr/share/$pkgname"/qml/translations/*.ts # the .qm only
   install -Dm644 "packaging/arch/$pkgname.desktop" "$pkgdir/usr/share/applications/$pkgname.desktop"
   install -Dm644 qml/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/$pkgname.png"
 }

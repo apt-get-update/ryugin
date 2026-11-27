@@ -20,16 +20,22 @@ ListItem {
 
     menu: ContextMenu {
         MenuItem {
-            text: "Add to queue"
+            //% "Add to queue"
+            text: qsTrId("ryugin-me-add_to_queue")
             onClicked: R.Player.enqueue([item.track])
         }
         MenuItem {
-            text: item.track.starred ? "Unlike" : "Like"
+            text: item.track.starred
+                  //% "Unlike"
+                  ? qsTrId("ryugin-me-unlike")
+                  //% "Like"
+                  : qsTrId("ryugin-me-like")
             onClicked: R.Player.setStarred(item.track.id, !item.track.starred)
         }
         MenuItem {
             visible: item.track.albumId !== ""
-            text: "Go to album"
+            //% "Go to album"
+            text: qsTrId("ryugin-me-go_to_album")
             onClicked: pageStack.animatorPush(Qt.resolvedUrl("../pages/AlbumPage.qml"), { albumId: item.track.albumId })
         }
     }
@@ -109,7 +115,7 @@ ListItem {
             anchors.verticalCenter: parent.verticalCenter
             width: Theme.iconSizeExtraSmall
             height: width
-            source: "image://theme/icon-s-favorite"
+            source: R.Icons.silica("heart-fill", Theme.iconSizeExtraSmall, palette.highlightColor) // a heart, as on the desktop
             color: palette.highlightColor
         }
         Label {

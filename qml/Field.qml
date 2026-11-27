@@ -1,25 +1,25 @@
 import QtQuick
-import QtQuick.Controls.Basic
+import QtQuick.Controls
 
-// A text field with an icon, in SPlayer's style.
+// A text field with an icon: the desktop's (Kvantum's) look, an underline, drawn here so it
+// takes the song's colour (a widget style paints its own).
 TextField {
     id: f
     property string icon: ""
-    property real radius: Theme.radius
-    implicitHeight: 42
-    leftPadding: icon !== "" ? 40 : 14
-    rightPadding: 14
-    color: Theme.text
-    placeholderTextColor: Theme.faint
+    leftPadding: icon !== "" ? 30 : 6
+    passwordCharacter: "•"
     selectionColor: Theme.gold
     selectedTextColor: Theme.goldInk
-    passwordCharacter: "•"
-    font.pixelSize: 14
-    background: Rectangle {
-        radius: f.radius
-        color: Theme.field
-        border.color: f.activeFocus ? Theme.gold : Theme.border
-        Behavior on border.color { ColorAnimation { duration: 150 } }
-        Icon { x: 13; anchors.verticalCenter: parent.verticalCenter; name: f.icon; size: 17; color: f.activeFocus ? Theme.gold : Theme.faint; visible: f.icon !== "" }
+    background: Item {
+        implicitWidth: 120
+        implicitHeight: 30
+        Rectangle {
+            anchors.bottom: parent.bottom
+            width: parent.width
+            height: f.activeFocus ? 2 : 1
+            color: f.activeFocus ? Theme.gold : Theme.border
+            Behavior on color { ColorAnimation { duration: 150 } }
+        }
     }
+    Icon { x: 6; anchors.verticalCenter: parent.verticalCenter; name: f.icon; size: 16; color: f.activeFocus ? Theme.gold : Theme.faint; visible: f.icon !== "" }
 }
