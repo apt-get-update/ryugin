@@ -1,40 +1,33 @@
-# Ryūgin: Navidrome player in Go + QML, built from this repo's working tree (uncommitted
-# changes included, as the Sailfish package).
+# Ryūgin: Navidrome player in Go + QML, the release tagged v$pkgver in this repo.
 # Build: make arch-install (or cd packaging/arch && makepkg -si)
+# The latest commit, uncommitted changes included: PKGBUILD-git (ryugin-git).
 
 pkgname=ryugin
-pkgver=1.2.0
+pkgver=2.0.0beta2
 pkgrel=1
 pkgdesc="Navidrome player with synced lyrics (Go + QML)"
 arch=('x86_64')
 license=('AGPL-3.0-or-later')
 depends=('qt6-base' 'qt6-declarative' 'qt6-multimedia' 'qt6-multimedia-ffmpeg' 'qt6-imageformats')
-makedepends=('go' 'git')
-
-pkgver() {
-  cd "$startdir/../.."
-  # master holds one squashed commit per release, so develop never reaches the tag:
-  # count from develop's commit with the same tree as the newest tag.
-  local tag base n
-  tag=$(git tag -l 'v*' --sort=-v:refname | head -n1)
-  base=$(git log --format='%H %T' HEAD | awk -v t="$(git rev-parse "$tag^{tree}")" '$2 == t { print $1; exit }')
-  n=$(git rev-list --count "${base:-$tag}"..HEAD)
-  if [ "$n" = 0 ]; then echo "${tag#v}"; else echo "${tag#v}.r$n.$(git rev-parse --short HEAD)"; fi
-}
+optdepends=('qqc2-desktop-style: controls in the desktop style (Kvantum, Breeze)')
+makedepends=('go' 'git' 'qt6-tools')
+source=("$pkgname::git+file://${startdir%/packaging/arch}#tag=v${pkgver/beta/-beta}") # 2.0.0beta2: v2.0.0-beta2
+sha256sums=('SKIP')
 
 build() {
-  cd "$startdir/../.."
-  rm -rf "$srcdir/$pkgname" # the old PKGBUILD's checkout: go build -o would write into it
+  cd "$pkgname"
   export GO111MODULE=on GOFLAGS=
   export CGO_CPPFLAGS="$CPPFLAGS" CGO_CFLAGS="$CFLAGS" CGO_CXXFLAGS="$CXXFLAGS" CGO_LDFLAGS="$LDFLAGS"
-  go build -trimpath -buildmode=pie -mod=readonly -ldflags "-s -w -X main.version=$pkgver" -o "$srcdir/$pkgname" ./app
+  make -s qm # the translations
+  go build -trimpath -buildmode=pie -mod=readonly -ldflags "-s -w -X main.version=$pkgver" -o "$pkgname" ./app
 }
 
 package() {
-  cd "$startdir/../.."
-  install -Dm755 "$srcdir/$pkgname" "$pkgdir/usr/bin/$pkgname"
+  cd "$pkgname"
+  install -Dm755 "$pkgname" "$pkgdir/usr/bin/$pkgname"
   install -d "$pkgdir/usr/share/$pkgname"
   cp -r qml "$pkgdir/usr/share/$pkgname/"
+  rm "$pkgdir/usr/share/$pkgname"/qml/translations/*.ts # the .qm only
   install -Dm644 "packaging/arch/$pkgname.desktop" "$pkgdir/usr/share/applications/$pkgname.desktop"
   install -Dm644 qml/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/$pkgname.png"
 }

@@ -35,7 +35,9 @@ func onQt(f func()) {
 		defer close(ch)
 		if !qtApp {
 			os.Setenv("QT_QPA_PLATFORM", "offscreen")
+			os.Setenv("LC_ALL", "C.UTF-8") // the English texts (make qm), as the tests compare
 			qt.NewQApplication(os.Args)
+			translate("../qml/translations")
 			qtApp = true
 		}
 		f()

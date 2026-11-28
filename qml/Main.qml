@@ -1,6 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Controls.Basic
+import QtQuick.Controls
 
 // Layout after SPlayer-Next: icon rail, top bar, pages, player bar; lyrics and the
 // queue slide over the pages.
@@ -12,6 +12,10 @@ ApplicationWindow {
     minimumHeight: Nav.phone ? 0 : 620
     visible: true
     color: Theme.bg
+    // The controls' accent (sliders, switches, focus) follows the song's colours too.
+    palette.highlight: Theme.gold
+    palette.highlightedText: Theme.goldInk
+    palette.accent: Theme.gold
     title: Player.current ? Player.current.title + " · " + Player.current.artist : "Ryūgin"
 
     // With a tray icon (set by Go), closing only hides the window.
@@ -24,7 +28,7 @@ ApplicationWindow {
         }
     }
 
-    // Sailfish OS log (~/.cache/ryugin/ryugin.log): what the window does when minimized
+    // Sailfish OS log (~/.cache/dragon/ryugin/ryugin/ryugin.log): what the window does when minimized
     // and back (a blank window then showed only the home screen's wallpaper).
     onVisibilityChanged: console.log("window: visibility", win.visibility)
     onActiveChanged: {
@@ -34,29 +38,11 @@ ApplicationWindow {
     }
     // And every 10 minutes while it is shown.
     Timer {
-        running: win.visible && !Nav.covered
+        running: win.visible
         interval: 600000
         repeat: true
         triggeredOnStart: true
         onTriggered: Api.checkLibrary()
-    }
-    // Frames made, counted on this (the GUI) thread: frameSwapped comes from the render
-    // thread, and a QML handler on it crashed the phone (Qt's threaded render loop).
-    property int frames: 0
-    property int drawn: 0
-    onAfterAnimating: { frames++; drawn++; }
-    // tests/phone.sh starts the app with --bench: frames per second, every 5 s, in front.
-    Timer {
-        objectName: "benchStats"
-        running: Qt.application.arguments.indexOf("--bench") >= 0 && win.visible && !Nav.covered
-        interval: 5000
-        repeat: true
-        onTriggered: { console.log("bench: fps", win.drawn / 5); win.drawn = 0; }
-    }
-    Timer {
-        id: frameCount
-        interval: 3000
-        onTriggered: console.log("window: frames drawn in 3 s:", win.frames, "visible", win.visible, "covered", Nav.covered)
     }
 
     // Commands from Go (MPRIS, tray, global menu).
@@ -77,21 +63,15 @@ ApplicationWindow {
                 Theme.wash = c.wash || "";
                 Theme.flow = c.flow || "";
             }
-        } else if (["go", "nowPlaying", "queue", "fullScreen"].indexOf(c.cmd) >= 0) {
+        } else if (["go", "nowPlaying", "queue"].indexOf(c.cmd) >= 0) {
             win.show(); // from the global menu: the window may be in the tray
             win.raise();
             if (c.cmd === "go")
                 go(c.page);
             else if (c.cmd === "nowPlaying")
                 Nav.lyrics = !Nav.lyrics;
-            else if (c.cmd === "queue")
-                Nav.queue = !Nav.queue;
             else
-                win.visibility === Window.FullScreen ? win.showNormal() : win.showFullScreen();
-        } else if (c.cmd === "active") { // Sailfish OS: qt-runner minimized or back
-            Nav.covered = !c.on;
-            frames = 0;
-            frameCount.restart();
+                Nav.queue = !Nav.queue;
         } else if (c.cmd === "backdrop") {
             Player.settings.backdrop = c.value;
         } else {
@@ -103,35 +83,50 @@ ApplicationWindow {
         // Set by Go (main.go) as context properties: unknown to qmllint.
         if (typeof goBridge !== "undefined")
             Player.bridge = goBridge; // qmllint disable unqualified
+        if (typeof goIconDir !== "undefined")
+            Icons.dir = goIconDir; // qmllint disable unqualified
+        if (typeof goIconNames !== "undefined")
+            Icons.have = goIconNames.split(" ").reduce(function (m, n) { m[n] = true; return m; }, {}); // qmllint disable unqualified
         if (typeof goStreamProxy !== "undefined")
             Api.streamProxy = goStreamProxy; // qmllint disable unqualified
         Api.cache({ on: Player.settings.cache ? 1 : 0, limit: Player.settings.cacheLimit });
         prefetch.start();
         go("home");
         if (!Api.configured)
-            settingsPopup.open();
+            go("settings");
     }
 
     readonly property var pages: [
-        { key: "home", label: "Home", icon: "house", url: "HomePage.qml" },
-        { key: "albums", label: "Albums", icon: "disc-3", url: "AlbumsPage.qml" },
-        { key: "artists", label: "Artists", icon: "users", url: "ArtistsPage.qml" },
-        { key: "playlists", label: "Playlists", icon: "list-music", url: "PlaylistsPage.qml" },
-        { key: "settings", label: "Navidrome", icon: "settings", url: "SettingsPage.qml", bottom: true }
+        { key: "home", label: /*% "Home" */ qsTrId("ryugin-he-home"), icon: "house", url: "HomePage.qml" },
+        { key: "albums", label: /*% "Albums" */ qsTrId("ryugin-he-albums"), icon: "disc-3", url: "AlbumsPage.qml" },
+        { key: "favorites", label: /*% "Favorites" */ qsTrId("ryugin-he-favorites"), icon: "favorite", url: "AlbumsPage.qml", props: { type: "starred" } },
+        { key: "artists", label: /*% "Artists" */ qsTrId("ryugin-he-artists"), icon: "users", url: "ArtistsPage.qml" },
+        { key: "playlists", label: /*% "Playlists" */ qsTrId("ryugin-he-playlists"), icon: "list-music", url: "PlaylistsPage.qml" },
+        { key: "settings", label: /*% "Settings" */ qsTrId("ryugin-he-settings"), icon: "settings", url: "SettingsPage.qml", bottom: true }
     ]
     property string section: "home"
-    readonly property bool settingsOpen: settingsPopup.opened
+    readonly property bool settingsOpen: settingsPopup.opened || settingsWindow.visible
 
     // History, so the top bar can go back and forward.
     property var history: []
     property var ahead: []
 
     function go(key) {
-        if (key === "settings") { // a popup over the page: the gear opens and closes it
-            settingsPopup.opened ? settingsPopup.close() : settingsPopup.open();
+        if (key === "settings") { // a dialog (a phone: a popup over the page); the gear opens and closes it
+            if (settingsOpen) {
+                settingsPopup.close();
+                settingsWindow.close();
+            } else if (Nav.phone) {
+                settingsPopup.open();
+            } else {
+                settingsWindow.show();
+                settingsWindow.raise();
+                settingsWindow.requestActivate();
+            }
             return;
         }
         settingsPopup.close();
+        settingsWindow.close();
         Nav.lyrics = false;
         // Its own page again: no rebuild (it blinked). From an album opened there, back to
         // the list as it was; on the list itself, up to the top.
@@ -148,7 +143,8 @@ ApplicationWindow {
         history = [];
         ahead = [];
         stack.clear();
-        stack.push(pages.find(function (p) { return p.key === key; }).url);
+        const p = pages.find(function (p) { return p.key === key; });
+        stack.push(p.url, p.props || {});
     }
     // Scrolls a page (or the list in it) to its top.
     function toTop(item) {
@@ -192,6 +188,8 @@ ApplicationWindow {
         function onOpenArtist(id, name) { win.open("ArtistPage.qml", { artistId: id, name: name }); }
         function onOpenPlaylist(id, name) { win.open("PlaylistPage.qml", { playlistId: id, name: name }); }
         function onHome() { win.go("home"); }
+        function onBack() { win.back(); }
+        function onGo(key) { win.go(key); }
         function onSettings() { win.go("settings"); }
         function onSearch(query) {
             if (query === "") { // cleared: back to what was there before the search
@@ -214,6 +212,8 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+L"; onActivated: Nav.lyrics = !Nav.lyrics }
     Shortcut { sequence: "Escape"; onActivated: Nav.lyrics ? Nav.lyrics = false : (Nav.queue ? Nav.queue = false : win.back()) }
     Shortcut { sequences: [StandardKey.Back]; onActivated: win.back() }
+    Shortcut { sequence: "F9"; onActivated: Nav.layout.folded = !Nav.layout.folded }
+    Shortcut { sequences: [StandardKey.Find]; onActivated: { Nav.layout.folded = false; Qt.callLater(Nav.focusSearch); } }
     Shortcut { sequences: [StandardKey.Forward]; onActivated: if (win.ahead.length) win.forward() }
 
     // Room for a phone's notch (the Jolla Phone's camera) at the top when upright; on its
@@ -224,7 +224,7 @@ ApplicationWindow {
     Rectangle {
         id: content
         anchors.fill: parent
-        color: Theme.bg
+        color: "transparent" // the window's colour: one layer, so it stays see-through
 
         Sidebar {
             id: sidebar
@@ -239,6 +239,8 @@ ApplicationWindow {
 
         Header {
             id: header
+            visible: Nav.phone
+            height: visible ? implicitHeight : 0
             anchors.left: sidebar.right
             anchors.right: parent.right
             anchors.top: parent.top
@@ -253,7 +255,11 @@ ApplicationWindow {
             id: stack
             objectName: "stack"
             anchors.left: sidebar.right
-            anchors.right: parent.right
+            anchors.right: queue.over ? parent.right : queue.left // docked beside the queue, else under it
+            // Under the queue (a small window): faded out, the queue's glass shows the window's blur,
+            // not the page's covers.
+            opacity: queue.over && Nav.queue ? 0 : 1
+            Behavior on opacity { NumberAnimation { duration: 200 } }
             anchors.top: header.bottom
             anchors.bottom: tabs.top
             clip: true
@@ -290,16 +296,20 @@ ApplicationWindow {
             NumberAnimation { id: springBack; target: stack.currentItem; property: "x"; to: 0; duration: 220; easing.type: Easing.OutCubic }
         }
 
+        // Docked at the right (a phone: over the page).
         QueuePanel {
             id: queue
-            width: Nav.phone ? content.width - 24 : 340
+            objectName: "queueDock"
+            // Over the whole middle when the page beside it would be too narrow (a phone, a
+            // small window), else docked at its width.
+            over: Nav.phone || content.width - sidebar.width - Nav.layout.queueWidth < 480
+            width: Nav.queue ? (over ? content.width - sidebar.width : Nav.layout.queueWidth) : 0
             anchors.right: parent.right
             anchors.top: header.bottom
             anchors.bottom: tabs.top
-            anchors.margins: 12
-            visible: x < content.width
-            anchors.rightMargin: Nav.queue ? 12 : -width - 20
-            Behavior on anchors.rightMargin { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+            visible: width > 0
+            clip: true
+            Behavior on width { enabled: !queue.resizing; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
             z: 3
         }
 
@@ -377,11 +387,20 @@ ApplicationWindow {
         exit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 150 } }
     }
 
-    // Sailfish OS, minimized: the home screen's card shows this; not over the fullscreen
-    // player, which the card shows as it is (the swipe's live window, then the same card).
-    CoverMode {
-        anchors.fill: parent
-        visible: Nav.covered && !Nav.lyrics
-        z: 100
+    // Settings, a dialog of its own (a phone: the popup above): the compositor blurs it.
+    Window {
+        id: settingsWindow
+        objectName: "settingsWindow"
+        transientParent: win
+        title: /*% "Ryūgin settings" */ qsTrId("ryugin-he-settings_window")
+        width: 760
+        height: 560
+        minimumWidth: 560
+        minimumHeight: 400
+        color: Theme.bg
+        palette.highlight: Theme.gold
+        palette.highlightedText: Theme.goldInk
+        palette.accent: Theme.gold
+        SettingsPage { anchors.fill: parent; onCloseRequested: settingsWindow.close() }
     }
 }

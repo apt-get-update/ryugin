@@ -1,18 +1,26 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Controls.Basic as C
+import QtQuick.Controls as C
 
-// Every album, by name, in a grid that loads covers as you scroll.
+// Every album, by name, in a grid that loads covers as you scroll; type "starred": the
+// liked ones (Favorites; the sidebar's heart plays the liked songs).
 Item {
     id: page
+    property string type: ""
     property var albums: []
-    function load() { Api.allAlbums(function (l) { if (!page) return; page.albums = l; }); }
+    function load() {
+        const done = function (l) { if (!page) return; page.albums = l; };
+        if (type === "starred")
+            Api.albumList("starred", 500, 0, done);
+        else
+            Api.allAlbums(done);
+    }
     Component.onCompleted: load()
     Connections { target: Api; function onLibraryChanged() { page.load(); } }
     Text {
         x: 28
         y: 8
-        text: "Albums"
+        text: page.type === "starred" ? /*% "Favorites" */ qsTrId("ryugin-he-favorites") : /*% "Albums" */ qsTrId("ryugin-he-albums")
         color: Theme.text
         font.pixelSize: 30
         font.weight: Font.Bold

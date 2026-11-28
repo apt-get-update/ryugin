@@ -1,8 +1,7 @@
 import QtQuick
 
-// Click the cover to open the album; ▶ (always shown on a phone) or a double-click plays
-// the whole album. With a song (recently played): a click plays songs from it, the disc
-// button plays its album from it.
+// Click the cover to open the album; ▶ (always shown on a phone) plays: the whole album, or
+// with a song (recently played) the songs from it. A double-click on an album plays it too.
 Item {
     id: card
     property var album
@@ -37,28 +36,35 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             // A single click waits a moment, so a double-click can play instead.
-            onClicked: card.song ? card.playSongs() : single.restart()
+            onClicked: card.song ? Nav.openAlbum(card.song.albumId) : single.restart()
             onDoubleClicked: if (!card.song) { single.stop(); card.playAlbum(); }
         }
         Timer { id: single; interval: 220; onTriggered: Nav.openAlbum(card.album.id) }
+        // ▶: sumi ink with a gold ring, as kintsugi; gold fills it under the mouse. It only
+        // fades in: the cover already moves.
         Rectangle {
+            id: playButton
+            readonly property bool shown: card.item !== null && (Nav.phone || area.containsMouse || play.containsMouse) // no hover on a phone
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.margins: 10
-            width: 42
-            height: 42
-            radius: 21
-            color: play.containsMouse ? Qt.lighter(Theme.gold, 1.1) : Theme.gold
+            width: Nav.phone ? 42 : 36
+            height: width
+            radius: width / 2
+            color: play.containsMouse ? Theme.gold : Qt.rgba(0, 0, 0, 0.55)
+            border.width: 1.5
+            border.color: Theme.alpha(Theme.gold, play.containsMouse ? 1 : 0.85)
             objectName: "playAlbum"
-            opacity: card.item && (Nav.phone || area.containsMouse || play.containsMouse) ? 1 : 0 // no hover on a phone
+            opacity: shown ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 150 } }
-            Icon { anchors.centerIn: parent; anchors.horizontalCenterOffset: 1; name: card.song ? "disc-3" : "play"; size: 18; color: Theme.goldInk }
+            Behavior on color { ColorAnimation { duration: 120 } }
+            Icon { anchors.centerIn: parent; anchors.horizontalCenterOffset: 1; name: "play-fill"; size: Nav.phone ? 18 : 15; color: play.containsMouse ? Theme.goldInk : Theme.gold }
             MouseArea {
                 id: play
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: card.playAlbum()
+                onClicked: card.song ? card.playSongs() : card.playAlbum()
             }
         }
     }

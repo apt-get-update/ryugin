@@ -41,6 +41,49 @@ TestCase {
         }
     }
 
+    // An album hidden (1 star on Navidrome) leaves the lists, and its songs the song lists;
+    // shown again, it is back.
+    function test_hidden_albums() {
+        const known = Api.known.albums;
+        try {
+            Api.known.albums = JSON.stringify([{ id: "newest-1", title: "Music for Nine Postcards", artist: "Hiroshi Yoshimura", rating: 1 }]);
+            compare(Object.keys(Api.hidden), ["newest-1"]);
+            compare(result(function (cb) { Api.albumList("newest", 10, 0, cb); })[0].map(function (a) { return a.id; }), ["newest-0", "newest-2", "newest-3"]);
+            mock.calls(true);
+            Api.hide({ id: "a", title: "Green", artist: "Hiroshi Yoshimura" }, true);
+            tryVerify(function () { return mock.called("setRating", "id=a&rating=1"); }, 5000);
+            compare(result(function (cb) { Api.randomSongs(3, cb); })[0].length, 0, "Green's songs left out");
+            compare(result(function (cb) { Api.search("x", cb); })[0].songs.length, 0);
+            Api.hide({ id: "a" }, false);
+            tryVerify(function () { return mock.called("setRating", "id=a&rating=0"); }, 5000);
+            compare(result(function (cb) { Api.starredSongs(cb); })[0].length, 1, "back");
+            compare(Object.keys(Api.hidden), ["newest-1"]);
+        } finally {
+            Api.known.albums = known;
+        }
+    }
+
+    // Go's relay says whether the network costs; with no relay, it does not.
+    function test_metered() {
+        compare(result(function (cb) { Api.metered(cb); })[0], false);
+        try {
+            Api.streamProxy = mock.url + "/?u=";
+            mock.meter(true);
+            compare(result(function (cb) { Api.metered(cb); })[0], true);
+            mock.meter(false);
+            compare(result(function (cb) { Api.metered(cb); })[0], false);
+            Api.streamProxy = "http://127.0.0.1:9/?u="; // no answer
+            compare(result(function (cb) { Api.metered(cb); })[0], false);
+            Api.streamProxy = mock.url + "/?u=";
+            mock.calls(true);
+            Api.ahead("s1");
+            tryVerify(function () { return mock.called("ahead", "id=s1"); }, 5000);
+        } finally {
+            mock.meter(false);
+            Api.streamProxy = "";
+        }
+    }
+
     function test_cover_and_stream() {
         compare(Api.cover("", 100), "");
         verify(Api.cover("c", 100).indexOf("getCoverArt?") > 0);

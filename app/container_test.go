@@ -1,173 +1,140 @@
 package main
 
 import (
+	"io"
 	"net"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/godbus/dbus/v5"
-	"github.com/godbus/dbus/v5/prop"
 )
 
-// A stand-in for qt-runner exports activeState (an int, as it declares it) and signals the
-// change when it goes to the home screen; the app hears both.
-func TestWatchActive(t *testing.T) {
-	runner := privateBus(t)
-	if _, err := prop.Export(runner, "/", prop.Map{containerIface: {"activeState": {Value: int32(1), Emit: prop.EmitFalse}}}); err != nil {
-		t.Fatal(err)
+// The plugin's side: it connects, reads the state, reports the keyboard, hears the changes.
+func TestContainer(t *testing.T) {
+	if _, _, err := serveContainer(filepath.Join(t.TempDir(), "none")); err == nil {
+		t.Fatal("served in a folder that is not there")
 	}
-	if _, err := runner.RequestName(containerName, dbus.NameFlagDoNotQueue); err != nil {
-		t.Fatal(err)
-	}
-	app, err := dbus.Connect(os.Getenv("DBUS_SESSION_BUS_ADDRESS"), dbus.WithAuth(dbus.AuthAnonymous()))
+	c, addr, err := serveContainer(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	app.AddMatchSignal(dbus.WithMatchInterface(containerIface))
-	got := make(chan bool, 4)
-	go watchActive(app, func(c map[string]any) {
-		if c["cmd"] == "active" {
-			got <- c["on"].(bool)
+	conn, err := dbus.Dial(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err := conn.Auth(nil); err != nil {
+		t.Fatal(err)
+	}
+	signals := make(chan *dbus.Signal, 4)
+	conn.Signal(signals)
+	obj := conn.Object("org.flatpak.sailfish.container", "/")
+	if err := obj.Call(containerIface+".keyboardRect", 0, true, int32(0), int32(0), int32(10), int32(10)).Err; err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; ; i++ { // the link is served once the call came back; its peer is listed after
+		c.mu.Lock()
+		n := len(c.peers)
+		c.mu.Unlock()
+		if n == 1 {
+			break
 		}
-	})
-	want := func(v bool) {
+		if i > 100 {
+			t.Fatal("no peer")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if v, err := obj.GetProperty(containerIface + ".activeState"); err != nil || v.Value() != int32(1) {
+		t.Fatal(v, err)
+	}
+	keyboard = c
+	defer func() { keyboard = nil }()
+	fromQML(nil, nil)(`{"keyboard":{"angle":90,"active":false}}`) // QML's turn
+	c.set(90, false)                                              // no change: no signal
+	for _, want := range []string{"orientationChanged", "activeStateChanged"} {
 		select {
-		case on := <-got:
-			if on != v {
-				t.Fatalf("active %v, want %v", on, v)
+		case s := <-signals:
+			if s.Name != containerIface+"."+want {
+				t.Fatal(s.Name)
 			}
 		case <-time.After(2 * time.Second):
-			t.Fatal("no state")
+			t.Fatal("no", want)
 		}
 	}
-	want(true)
-	runner.Emit("/", containerIface+".activeStateChanged", false)
-	want(false)
+	if v, err := obj.GetProperty(containerIface + ".orientation"); err != nil || v.Value() != int32(90) {
+		t.Fatal(v, err)
+	}
+	select {
+	case s := <-signals:
+		t.Fatal("signal with no change:", s.Name)
+	case <-time.After(100 * time.Millisecond):
+	}
+	var none *container
+	none.set(0, true) // no link: nothing
 }
 
-// qt-runner's bus: connected (no Hello), or an error for a bad address or a peer that
-// does not speak D-Bus. A state of another type is false.
-func TestContainerConn(t *testing.T) {
-	privateBus(t)
-	conn, err := containerConn(os.Getenv("DBUS_SESSION_BUS_ADDRESS"))
+// A connection that is not D-Bus is closed.
+func TestContainerNotDBus(t *testing.T) {
+	_, addr, err := serveContainer(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn.Close()
-	if _, err := containerConn("unix:path=/nonexistent"); err == nil {
-		t.Error("no bus, no error")
-	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	nc, err := net.Dial("unix", strings.TrimPrefix(addr, "unix:path="))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
-	go func() {
-		for {
-			c, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			c.Close()
-		}
-	}()
-	if _, err := containerConn("tcp:host=127.0.0.1,port=" + strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)); err == nil {
-		t.Error("no D-Bus, no error")
-	}
-	if truthy("1") || !truthy(int32(1)) || truthy(int32(0)) {
-		t.Error("truthy")
+	_, _ = nc.Write([]byte("GET / HTTP/1.1\r\n"))
+	if _, err := nc.Read(make([]byte, 1)); err != io.EOF {
+		t.Fatal(err)
 	}
 }
 
-// The real program as on Sailfish OS (tests/run.sh sets RYUGIN_BIN): under qt-runner, on a
-// dense screen (it restarts itself scaled), told by qt-runner's bus when it is in front;
-// a bad bus address is only logged, in its log file (the last run's kept).
-func TestProgramOnSailfish(t *testing.T) {
-	bin := os.Getenv("RYUGIN_BIN")
-	if bin == "" {
-		t.Skip("RYUGIN_BIN not set (tests/run.sh sets it)")
-	}
-	client := privateBus(t)
-	if _, err := prop.Export(client, "/", prop.Map{containerIface: {"activeState": {Value: true, Emit: prop.EmitFalse}}}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := client.RequestName(containerName, dbus.NameFlagDoNotQueue); err != nil {
-		t.Fatal(err)
-	}
-	// qt-runner: the parent's name is all the program looks at.
-	runner := filepath.Join(t.TempDir(), "qt-runner")
-	os.WriteFile(runner, []byte("#!/bin/sh\n\"$@\"\nexit $?\n"), 0o755)
-	cache := t.TempDir()
-	log := filepath.Join(cache, "ryugin", "ryugin.log")
-	for _, bus := range []string{os.Getenv("DBUS_SESSION_BUS_ADDRESS"), "unix:path=/nonexistent"} {
-		app := exec.Command(runner, bin)
-		app.Env = append(os.Environ(), "QT_QPA_PLATFORM=offscreen", "RYUGIN_DPI=320", "FLATPAK_MALIIT_CONTAINER_DBUS="+bus, "XDG_CACHE_HOME="+cache,
-			"RYUGIN_QML="+filepath.Join(must(os.Getwd()), "..", "qml"))
-		if err := app.Start(); err != nil {
-			t.Fatal(err)
-		}
-		player := client.Object(busName, objPath)
-		for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(200 * time.Millisecond) {
-			if _, err := player.GetProperty(rootIface + ".Identity"); err == nil {
-				break
-			}
-		}
-		if !strings.HasPrefix(bus, "unix:") {
-			secondCopy(t, client, runner, bin)
-		}
-		client.Emit("/", containerIface+".activeStateChanged", false)
-		time.Sleep(500 * time.Millisecond)
-		// The shell passes SIGTERM on only once it has waited: signal the program itself.
-		exec.Command("pkill", "-TERM", "-P", strconv.Itoa(app.Process.Pid)).Run()
-		app.Wait()
-		out, _ := os.ReadFile(log)
-		if strings.HasPrefix(bus, "unix:") && !strings.Contains(string(out), "qt-runner bus:") {
-			t.Error("a bad qt-runner bus is not logged in its file:", string(out))
+func TestAcceptAuth(t *testing.T) {
+	for _, tc := range []struct {
+		send, reply, rest string
+		ok                bool
+	}{
+		{send: "x"},
+		{send: "\x00"},
+		{send: "\x00AUTH\r\n\r\nNEGOTIATE_UNIX_FD\r\nAUTH EXTERNAL 30\r\nBEGIN\r\nhello", reply: "REJECTED EXTERNAL\r\nERROR\r\nERROR\r\nOK ", rest: "hello", ok: true},
+	} {
+		srv, cli := net.Pipe()
+		got := make(chan string)
+		go func() {
+			_, _ = cli.Write([]byte(tc.send))
+			b, _ := io.ReadAll(cli)
+			got <- string(b)
+		}()
+		go func() { // the plugin's side ends once all was answered
+			time.Sleep(100 * time.Millisecond)
+			_ = cli.Close()
+		}()
+		rest, err := acceptAuth(srv)
+		_ = srv.Close()
+		if (err == nil) != tc.ok || string(rest) != tc.rest || !strings.HasPrefix(<-got, tc.reply) {
+			t.Fatal(tc.send, err, string(rest))
 		}
 	}
-	if _, err := os.Stat(log + ".old"); err != nil {
-		t.Error("the last run's log is not kept")
+	// The plugin gone before the answer.
+	srv, cli := net.Pipe()
+	go func() { _, _ = cli.Write([]byte("\x00AUTH X\r\n")); _ = cli.Close() }()
+	if _, err := acceptAuth(srv); err == nil {
+		t.Fatal("answered a closed connection")
 	}
 }
 
-type qtRunnerObj struct{ activated chan bool }
-
-func (q qtRunnerObj) Activate() *dbus.Error { q.activated <- true; return nil }
-
-// secondCopy starts the program again under its own qt-runner: it brings the first one's
-// qt-runner to the front (org.sailfishos.qtrunner activate) and ends its own, an empty window.
-func secondCopy(t *testing.T, client *dbus.Conn, runner, bin string) {
-	exe, _ := filepath.EvalSymlinks(bin)
-	q := qtRunnerObj{make(chan bool, 1)}
-	_ = client.ExportMethodTable(map[string]any{"activate": q.Activate}, "/", "org.sailfishos.qtrunner")
-	name := "org.sailfishos.qtrunner.p" + notPath.ReplaceAllString(exe, "_")
-	if _, err := client.RequestName(name, dbus.NameFlagDoNotQueue); err != nil {
-		t.Fatal(err)
-	}
-	second := exec.Command(runner, bin)
-	second.Env = append(os.Environ(), "QT_QPA_PLATFORM=offscreen")
-	if err := second.Start(); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 1)
-	go func() { done <- second.Wait() }()
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Error("the second copy's qt-runner was not ended")
-		}
-	case <-time.After(10 * time.Second):
-		second.Process.Kill()
-		t.Error("the second copy's qt-runner still runs")
-	}
-	select {
-	case <-q.activated:
-	case <-time.After(2 * time.Second):
-		t.Error("the first copy's qt-runner was not brought to the front")
+// What the plugin sent with BEGIN is read before the connection.
+func TestAuthedRest(t *testing.T) {
+	srv, cli := net.Pipe()
+	defer srv.Close()
+	a := &authed{Conn: srv, script: strings.NewReader(""), rest: []byte("he")}
+	go func() { _, _ = cli.Write([]byte("llo")) }()
+	b := make([]byte, 8)
+	n, _ := a.Read(b)
+	m, _ := a.Read(b[n:])
+	if string(b[:n+m]) != "hello" {
+		t.Fatal(string(b[:n+m]))
 	}
 }

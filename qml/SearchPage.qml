@@ -25,12 +25,12 @@ Page {
             delegate: TextButton { required property var modelData; icon: "users"; text: modelData.name; onClicked: Nav.openArtist(modelData.id, modelData.name) }
         }
     }
-    Shelf { width: parent.width; title: "Albums"; albums: page.result.albums }
-    SectionTitle { title: "Songs"; visible: page.result.songs.length > 0 }
+    Shelf { width: parent.width; title: /*% "Albums" */ qsTrId("ryugin-he-albums"); albums: page.result.albums }
+    SectionTitle { title: /*% "Songs" */ qsTrId("ryugin-he-songs"); visible: page.result.songs.length > 0 }
     TrackList { width: parent.width; tracks: page.result.songs; showNumber: false }
     Text {
         visible: page.query !== "" && page.result.artists.length + page.result.albums.length + page.result.songs.length === 0
-        text: "Nothing found."
+        text: /*% "Nothing found." */ qsTrId("ryugin-la-nothing_found")
         color: Theme.dim
         font.pixelSize: 14
     }

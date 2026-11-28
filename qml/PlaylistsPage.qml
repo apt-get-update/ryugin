@@ -3,9 +3,11 @@ import QtQuick
 
 Page {
     id: page
-    title: "Playlists"
+    title: /*% "Playlists" */ qsTrId("ryugin-he-playlists")
     property var playlists: []
-    Component.onCompleted: Api.playlists(function (l) { if (!page) return; page.playlists = l; })
+    function load() { Api.playlists(function (l) { if (!page) return; page.playlists = l; }); }
+    Component.onCompleted: load()
+    Connections { target: Api; function onPlaylistsChanged() { page.load(); } }
     Flow {
         width: parent.width
         spacing: 22
@@ -27,7 +29,7 @@ Page {
                     }
                 }
                 Text { width: 168; text: playlist.modelData.name; color: Theme.text; font.pixelSize: 14; elide: Text.ElideRight }
-                Text { text: playlist.modelData.songCount + " tracks"; color: Theme.dim; font.pixelSize: 12 }
+                Text { text: /*% "%n songs" */ qsTrId("ryugin-la-n_songs", playlist.modelData.songCount); color: Theme.dim; font.pixelSize: 12 }
             }
         }
     }

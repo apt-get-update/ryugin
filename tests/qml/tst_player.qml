@@ -22,6 +22,7 @@ TestCase {
     function init() {
         mock.connect();
         Player.repeat = "off";
+        Player.settings.karaoke = false;
         Player.bridge = null;
         Player.play(tracks(3), 0);
     }
@@ -137,10 +138,10 @@ TestCase {
         compare(ids(), tracks(20).map(function (t) { return t.id; }).join(), "off: the order back");
         compare(Player.current.id, id, "at the playing song");
     }
-    function test_shuffle_buttons_turn_it_on() {
+    function test_shuffle_on_mixes_a_list() {
         try {
-            Player.shuffle(tracks(20));
-            verify(Player.settings.shuffle);
+            Player.settings.shuffle = true;
+            Player.play(tracks(20));
             compare(Player.queue.length, 20);
             Player.play(tracks(20), 7); // a song picked in a list: it plays first, the rest mixed
             compare(Player.current.id, "s7");
@@ -203,6 +204,32 @@ TestCase {
         tryVerify(function () { return mock.called("unstar", "id=s0"); }, 5000);
     }
 
+    // The queue edited: a song moved (the playing one plays on), the queue saved as a playlist.
+    function test_queue_move_and_save() {
+        const ids = function () { return Player.queue.map(function (t) { return t.id; }).join(" "); };
+        const before = ids(), playing = Player.current.id;
+        Player.move(0, 2);
+        compare(Player.current.id, playing, "the playing song plays on");
+        Player.move(2, 0);
+        compare(ids(), before);
+        Player.move(Player.queue.length - 1, 0);
+        compare(Player.current.id, playing);
+        Player.move(0, Player.queue.length - 1);
+        compare(ids(), before);
+        Player.move(0, 0); // no move
+        compare(ids(), before);
+        mock.calls(true);
+        const spy = Qt.createQmlObject("import QtTest; SignalSpy { signalName: 'playlistsChanged' }", this);
+        spy.target = Api;
+        Api.createPlaylist("Night", ["s0", "s1"]);
+        tryVerify(function () { return mock.called("createPlaylist", "name=Night&songId=s0&songId=s1"); }, 5000);
+        tryCompare(spy, "count", 1);
+        Api.deletePlaylist("p1");
+        tryVerify(function () { return mock.called("deletePlaylist", "id=p1"); }, 5000);
+        tryCompare(spy, "count", 2);
+        spy.destroy();
+    }
+
     function test_now_playing_is_scrobbled() {
         mock.calls(true);
         Player.jump(1);
@@ -223,6 +250,97 @@ TestCase {
         Player.jump(2); // s2 has none
         tryVerify(function () { return Player.lyrics.length === 0; }, 5000);
         compare(Player.lyricsSynced, false);
+    }
+
+    // ---- Karaoke: songs without synced lyrics are learnt and passed over; those looked up
+    // ahead play at once with theirs.
+    function forget() {
+        Player.settings.sung = "{}";
+        Player.sung = {};
+        Player.early = null;
+    }
+    function test_karaoke_learns_and_skips() {
+        forget();
+        Player.play(tracks(3), 0);
+        Player.command({ cmd: "karaoke" });
+        verify(Player.karaoke);
+        tryVerify(function () { return Player.sung.s0 === true && Player.sung.s1 === false && Player.sung.s2 === false; }, 5000);
+        compare(JSON.parse(Player.settings.sung).s1, false);
+        Player.next(); // nothing after s0 with lyrics
+        compare(Player.index, 0);
+        Player.playKaraoke(tracks(3));
+        compare(Player.queue.map(function (t) { return t.id; }), ["s0"]);
+        Player.command({ cmd: "karaoke" });
+        verify(!Player.karaoke);
+    }
+    function test_sweep_finds_the_songs_with_lyrics() {
+        forget();
+        Player.swept = false;
+        Player.sweep();
+        Player.sweep(); // once a run
+        tryVerify(function () { return Player.sweepLeft === 0 && Player.sung.s0 === true && Player.sung.s1 === false && Player.sung.s2 === false; }, 5000);
+        compare(JSON.parse(Player.settings.sung).s0, true);
+    }
+    // On mobile data, no sweep: tried again later, on Wi-Fi.
+    function test_sweep_waits_for_wifi() {
+        forget();
+        mock.calls(true);
+        try {
+            Api.streamProxy = mock.url + "/?u=";
+            mock.meter(true);
+            Player.swept = false;
+            Player.sweep();
+            tryVerify(function () { return Player.sweepWait.running; }, 5000);
+            verify(!Player.swept);
+            verify(!mock.called("getLyricsBySongId"), "nothing asked on mobile data");
+            mock.meter(false);
+            Player.sweepWait.stop();
+            Player.sweep();
+            tryVerify(function () { return Player.sung.s0 === true; }, 5000);
+        } finally {
+            mock.meter(false);
+            Api.streamProxy = "";
+        }
+    }
+    // Each song played: the next one is downloaded ahead by Go.
+    function test_next_downloaded_ahead() {
+        try {
+            Api.streamProxy = mock.url + "/?u=";
+            mock.calls(true);
+            Player.play(tracks(3), 0);
+            tryVerify(function () { return mock.called("ahead", "id=s1"); }, 5000);
+        } finally {
+            Api.streamProxy = "";
+        }
+    }
+    function test_karaoke_passes_a_song_without() {
+        forget();
+        const l = tracks(3);
+        l[1].title = "Creek"; // plain lyrics only (no lyrics at all waits for the stream's length)
+        Player.play(l, 0);
+        Player.settings.karaoke = true;
+        Player.jump(1);
+        tryVerify(function () { return Player.index === 2 && Player.sung.s1 === false; }, 5000);
+    }
+    // A song chosen (an album's, a search's) plays, lyrics or not: karaoke ends.
+    function test_play_ends_karaoke() {
+        Player.settings.karaoke = true;
+        Player.play(tracks(3), 1);
+        verify(!Player.karaoke);
+        compare(Player.index, 1);
+    }
+    function test_karaoke_looks_ahead() {
+        forget();
+        const l = tracks(2);
+        l[1].title = "Creek";
+        Player.play([l[1], l[0]], 0);
+        tryVerify(function () { return Player.sung.s1 === false; }, 5000);
+        Player.toggleKaraoke();
+        tryVerify(function () { return Player.early !== null && Player.early.id === "s0"; }, 5000);
+        Player.next();
+        compare(Player.lyrics.length, 3);
+        verify(Player.lyricsSynced);
+        compare(Player.early, null);
     }
 
     function test_line_at() {
@@ -265,7 +383,6 @@ TestCase {
         Player.report(false, false);
         compare(JSON.parse(fakeBridge.objectName).status, "Playing");
         Player.going = false;
-        verify(Array.isArray(s.recentArt), "the last albums' covers come with the track");
         compare(s.track.id, "s0");
         compare(s.track.length, 200000000);
         verify(s.track.art.indexOf("getCoverArt") > 0);
@@ -328,13 +445,13 @@ TestCase {
         verify(!Player.playing);
         compare(Player.media.source.toString(), "", "nothing loaded");
     }
-    function test_restored_keeps_the_cover_split() {
+    function test_restored_is_no_song_for_mpris() {
         lastRun(5000);
         Player.bridge = fakeBridge;
         Player.report(true, false);
         const s = JSON.parse(fakeBridge.objectName);
-        verify(s.track === undefined, "no song for MPRIS yet: the cover shows the albums");
-        verify(Array.isArray(s.recentArt));
+        verify(s.track === undefined, "not played in this run: the home screen's card shows the albums");
+        verify(Array.isArray(Player.recentArt()));
         Player.bridge = null;
     }
     function test_play_resumes_the_restored_song() {

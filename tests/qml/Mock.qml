@@ -19,10 +19,16 @@ QtObject {
         xhr.send();
         return JSON.parse(xhr.responseText) || [];
     }
-    // Navidrome scans the library again (a new lastScan).
-    function scan() {
+    // Navidrome scans the library again (a new lastScan); running: a scan not ended yet.
+    function scan(running) {
         const xhr = new XMLHttpRequest();
-        xhr.open("GET", url + "/scan", false);
+        xhr.open("GET", url + "/scan" + (running ? "?running=1" : ""), false);
+        xhr.send();
+    }
+    // Go's relay says the network is mobile data (on), or not.
+    function meter(on) {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", url + "/meter" + (on ? "?on=1" : ""), false);
         xhr.send();
     }
     function called(method, part) {

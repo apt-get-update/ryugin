@@ -15,7 +15,9 @@ echo "PASS   : code quality (golangci-lint, qmllint)"
 # Go's coverage: the unit tests and the real program's runs below, together.
 cov="$tmp/cov"
 mkdir -p "$cov"
-go test -covermode=atomic ./app -args -test.gocoverdir="$cov"
+make -s qm # the translations: the tests read the English, as the app loads it
+# No session bus: no tray, no other player (the same in a sandbox and on a desktop).
+DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent go test -covermode=atomic ./app -args -test.gocoverdir="$cov"
 
 go build -o "$tmp/mock" ./tests/mocknavidrome
 "$tmp/mock" -addr 127.0.0.1:4533 &
@@ -23,7 +25,7 @@ mock=$!
 sleep 0.5
 
 QT_QPA_PLATFORM=offscreen XDG_CONFIG_HOME="$tmp/config" QML_XHR_ALLOW_FILE_READ=1 QT_LOGGING_RULES="qt.multimedia*=false" \
-    /usr/lib/qt6/bin/qmltestrunner -input tests/qml "$@" 2>&1 | tee "$tmp/log"
+    /usr/lib/qt6/bin/qmltestrunner -input tests/qml -translation qml/translations/ryugin_eng_en.qm "$@" 2>&1 | tee "$tmp/log"
 grep -q "^Totals: .* 0 failed" "$tmp/log"
 # A QML warning is a bug too (a bad binding, a missing property); only the headless
 # platform's own notes are allowed.
@@ -39,7 +41,19 @@ go build -covermode=atomic -o "$tmp/sgd" ./app
 export GOCOVERDIR="$cov"
 mkdir -p "$tmp/config/ryugin"
 printf '[server]\nurl=http://127.0.0.1:4533\nuser=u\ntoken=t\nsalt=s\n' > "$tmp/config/ryugin/ryugin.conf"
-QT_QPA_PLATFORM=offscreen XDG_CONFIG_HOME="$tmp/config" RYUGIN_QML="$PWD/qml" DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent \
+# A KDE colour scheme (kdeglobals names it), as on Plasma: the app takes its colours.
+printf '[General]\nColorScheme=Test\n' > "$tmp/config/kdeglobals"
+mkdir -p "$tmp/home/.local/share/color-schemes"
+printf '[Colors:Window]\nBackgroundNormal=30,26,16\nForegroundNormal=bad\n' > "$tmp/home/.local/share/color-schemes/Test.colors"
+# An icon theme (hicolor here), with a sized SVG and a symbolic one (it wins), inheriting another.
+icons="$tmp/home/.icons/hicolor"
+mkdir -p "$icons/16/actions" "$icons/symbolic/actions"
+printf '[Icon Theme]\nInherits=ryugin-test\n' > "$icons/index.theme"
+svg='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path d="M2 2h12v12H2z"/></svg>'
+echo "$svg" > "$icons/16/actions/edit-find-symbolic.svg"
+echo "$svg" > "$icons/symbolic/actions/edit-find-symbolic.svg"
+echo "$svg" > "$icons/symbolic/actions/go-home-symbolic.svg"
+HOME="$tmp/home" QT_QPA_PLATFORM=offscreen XDG_CONFIG_HOME="$tmp/config" RYUGIN_QML="$PWD/qml" DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent \
     timeout 6 "$tmp/sgd" > "$tmp/run.log" 2>&1 || [ $? -eq 124 ]
 if grep "qml/.*:[0-9]*:\|TypeError\|ReferenceError\|Binding loop" "$tmp/run.log"; then
     echo "the program logs QML errors" >&2
@@ -55,7 +69,7 @@ if QT_QPA_PLATFORM=offscreen XDG_CONFIG_HOME="$tmp/config" RYUGIN_QML="$tmp/bad"
 
 # The same program on a session bus of its own: MPRIS from QML through Go (mpris_test.go),
 # and as on Sailfish OS (container_test.go).
-XDG_CONFIG_HOME="$tmp/config" RYUGIN_BIN="$tmp/sgd" go test -count=1 -run 'TestProgramOn' ./app
+HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/config" RYUGIN_BIN="$tmp/sgd" go test -count=1 -run 'TestProgramOn' ./app
 
 # 100 % of the Go code is run by the tests; the badge in the README says so.
 go tool covdata textfmt -i="$cov" -o "$tmp/cov.txt"

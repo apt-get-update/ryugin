@@ -1,7 +1,8 @@
 import QtQuick
+import QtQuick.Controls
 
 // Bottom bar, as in SPlayer-Next: controls left, the track in the middle with its
-// progress, then time, volume, lyrics and queue. Click the cover for the lyrics.
+// progress, then time, volume and queue (a phone). Click the cover for Now Playing.
 Rectangle {
     id: bar
     height: Nav.phone ? 64 : 80
@@ -57,7 +58,26 @@ Rectangle {
             radius: 8
             anchors.verticalCenter: parent.verticalCenter
             coverId: bar.t ? bar.t.cover : ""
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Nav.lyrics = !Nav.lyrics; onWheel: function (e) { if (e.angleDelta.y > 0) Nav.lyrics = true; } }
+            // An invitation to Now Playing: the way up, over the cover.
+            Rectangle {
+                anchors.fill: parent
+                radius: parent.radius
+                color: Qt.rgba(0, 0, 0, 0.45)
+                opacity: artArea.containsMouse && bar.t ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 140 } }
+                Icon { anchors.centerIn: parent; name: "chevron-up"; size: 22; color: "#ffffff" }
+            }
+            MouseArea {
+                id: artArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Nav.lyrics = !Nav.lyrics
+                onWheel: function (e) { if (e.angleDelta.y > 0) Nav.lyrics = true; }
+                ToolTip.visible: containsMouse && !!bar.t
+                ToolTip.text: /*% "Now playing (Ctrl+L)" */ qsTrId("ryugin-la-now_playing_ctrl_l")
+                ToolTip.delay: 500
+            }
         }
         Column {
             anchors.left: art.right
@@ -133,7 +153,7 @@ Rectangle {
             onMoved: Player.setVolume(value)
             MouseArea { anchors.fill: parent; acceptedButtons: Qt.NoButton; onWheel: function (e) { Player.wheelVolume(e); } }
         }
-        IconButton { visible: !Nav.phone; icon: "mic-vocal"; iconSize: 18; active: Nav.lyrics; anchors.verticalCenter: parent.verticalCenter; onClicked: Nav.lyrics = !Nav.lyrics }
-        IconButton { icon: "list-music"; iconSize: 18; active: Nav.queue; anchors.verticalCenter: parent.verticalCenter; onClicked: Nav.queue = !Nav.queue }
+        // The queue: the sidebar opens it on a desktop.
+        IconButton { visible: Nav.phone; icon: "list-ordered"; iconSize: 18; active: Nav.queue; anchors.verticalCenter: parent.verticalCenter; onClicked: Nav.queue = !Nav.queue }
     }
 }
