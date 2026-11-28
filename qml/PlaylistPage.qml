@@ -22,5 +22,5 @@ Page {
         }
         TextButton { visible: page.confirming; text: /*% "Cancel" */ qsTrId("ryugin-la-cancel"); onClicked: page.confirming = false }
     }
-    TrackList { width: parent.width; tracks: page.tracks }
+    TrackList { width: parent.width; view: page; tracks: page.tracks }
 }

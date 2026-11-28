@@ -39,7 +39,7 @@ CoverBackground {
             }
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
-            source: cover.idleArt.length > 0 ? cover.idleArt[0] : ""
+            source: cover.idle && cover.idleArt.length > 0 ? cover.idleArt[0] : ""
         }
         Image {
             id: second
@@ -87,7 +87,7 @@ CoverBackground {
         }
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
-        source: cover.track ? R.Api.cover(cover.track.cover, 512) : ""
+        source: !cover.idle && cover.track ? R.Api.cover(cover.track.cover, 512) : ""
     }
 
     Rectangle {
@@ -112,6 +112,15 @@ CoverBackground {
         // Paused: dimmed, as 1.2's.
         opacity: R.Player.playing ? 1.0 : Theme.opacityHigh
 
+        // The time played, large at the top, as Jolla's Media cover.
+        Label {
+            anchors.horizontalCenter: parent.horizontalCenter
+            font.pixelSize: R.Player.duration >= 3600000 ? Theme.fontSizeExtraLarge : Theme.fontSizeHuge
+            color: art.visible && Theme.colorScheme === Theme.DarkOnLight
+                   ? Theme.highlightFromColor(Theme.highlightColor, Theme.LightOnDark)
+                   : Theme.highlightColor
+            text: R.Theme.time(R.Player.seconds / 1000)
+        }
         Label {
             anchors.horizontalCenter: parent.horizontalCenter
             width: Math.min(implicitWidth, parent.width)
@@ -163,8 +172,4 @@ CoverBackground {
             onTriggered: R.Player.toggle()
         }
     }
-
-    // In the log: when Lipstick shows and hides the card.
-    onStatusChanged: console.log("cover:", status, width + "x" + height)
-
 }

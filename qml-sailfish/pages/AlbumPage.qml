@@ -14,14 +14,31 @@ Page {
     readonly property bool hidden: album !== null && R.Api.hidden[album.id] !== undefined
 
     Component.onCompleted: R.Api.getAlbum(albumId, function (a, t) {
+        if (!page)
+            return // gone before Navidrome answered
         page.album = a
         page.tracks = t
     })
+
+    // In landscape the cover stays at the left, as tall as the page, the songs at its right
+    // (as Now playing); upright it heads the list.
+    Image {
+        visible: page.isLandscape
+        width: visible ? page.height : 0
+        height: width
+        sourceSize {
+            width: width
+            height: height
+        }
+        fillMode: Image.PreserveAspectCrop
+        source: visible && page.album ? R.Api.cover(page.album.cover, 720) : ""
+    }
 
     SilicaListView {
         id: list
 
         anchors.fill: parent
+        anchors.leftMargin: page.isLandscape ? page.height : 0
         // Room for the player docked over its end (the pull-down menu owns bottomMargin).
         footer: Item {
             width: 1
@@ -43,7 +60,7 @@ Page {
                 visible: page.album !== null && page.album.artistId !== ""
                 //% "Go to artist"
                 text: qsTrId("ryugin-me-go_to_artist")
-                onClicked: pageStack.animatorPush(Qt.resolvedUrl("ArtistPage.qml"), { artistId: page.album.artistId, name: page.album.artist })
+                onClicked: R.Nav.openArtist(page.album.artistId, page.album.artist)
             }
             MenuItem {
                 //% "Add to queue"
@@ -61,6 +78,7 @@ Page {
             width: list.width
 
             Image {
+                visible: !page.isLandscape
                 width: parent.width
                 height: width
                 sourceSize {
@@ -68,7 +86,7 @@ Page {
                     height: height
                 }
                 fillMode: Image.PreserveAspectCrop
-                source: page.album ? R.Api.cover(page.album.cover, 720) : ""
+                source: visible && page.album ? R.Api.cover(page.album.cover, 720) : ""
             }
             Label {
                 x: Theme.horizontalPageMargin
@@ -99,16 +117,50 @@ Page {
             }
         }
 
-        delegate: TrackItem {
-            tracks: page.tracks
-            index: model.index
-            showNumber: true
-            showArtist: page.album !== null && modelData.artist !== page.album.artist
+        // A multi-disc album: each disc opens with its name and its cover (the cover of its
+        // first song: Navidrome gives a disc, or a song, its own).
+        delegate: Column {
+            width: list.width
+
+            Item {
+                visible: R.Api.discStart(page.tracks, model.index)
+                width: parent.width
+                height: Theme.itemSizeSmall
+
+                Image {
+                    id: disc
+
+                    x: Theme.horizontalPageMargin
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Theme.iconSizeMedium
+                    height: width
+                    sourceSize {
+                        width: width
+                        height: height
+                    }
+                    fillMode: Image.PreserveAspectCrop
+                    source: parent.visible ? R.Api.cover(modelData.cover, 128) : ""
+                }
+                SectionHeader {
+                    anchors {
+                        left: disc.right
+                        leftMargin: Theme.paddingMedium
+                        right: parent.right
+                        rightMargin: Theme.horizontalPageMargin
+                        verticalCenter: parent.verticalCenter
+                    }
+                    text: R.Api.discName(page.album, modelData.disc)
+                }
+            }
+            TrackItem {
+                tracks: page.tracks
+                index: model.index
+                showNumber: true
+                showArtist: page.album !== null && modelData.artist !== page.album.artist
+            }
         }
 
-        BusyIndicator {
-            anchors.centerIn: parent
-            size: BusyIndicatorSize.Large
+        PageBusyIndicator {
             running: page.album === null
         }
 

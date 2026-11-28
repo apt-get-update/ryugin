@@ -262,16 +262,18 @@ TestCase {
     function test_karaoke_learns_and_skips() {
         forget();
         Player.play(tracks(3), 0);
-        Player.command({ cmd: "karaoke" });
-        verify(Player.karaoke);
+        Player.settings.karaoke = true;
+        Player.scout();
         tryVerify(function () { return Player.sung.s0 === true && Player.sung.s1 === false && Player.sung.s2 === false; }, 5000);
         compare(JSON.parse(Player.settings.sung).s1, false);
         Player.next(); // nothing after s0 with lyrics
         compare(Player.index, 0);
         Player.playKaraoke(tracks(3));
         compare(Player.queue.map(function (t) { return t.id; }), ["s0"]);
-        Player.command({ cmd: "karaoke" });
-        verify(!Player.karaoke);
+        Player.play(tracks(3), 1);
+        verify(!Player.karaoke, "a song chosen plays, lyrics or not");
+        Player.command({ cmd: "karaoke" }); // the menu's: the library's songs to sing
+        tryVerify(function () { return Player.karaoke && Player.queue.length > 0; }, 5000);
     }
     function test_sweep_finds_the_songs_with_lyrics() {
         forget();
@@ -280,6 +282,25 @@ TestCase {
         Player.sweep(); // once a run
         tryVerify(function () { return Player.sweepLeft === 0 && Player.sung.s0 === true && Player.sung.s1 === false && Player.sung.s2 === false; }, 5000);
         compare(JSON.parse(Player.settings.sung).s0, true);
+    }
+    // A scan done: the songs it added are looked at, only them; during a sweep, after it.
+    function test_sweep_after_a_scan() {
+        forget();
+        Player.swept = false;
+        Player.sweep();
+        tryVerify(function () { return Player.sweepLeft === 0 && Player.sung.s2 === false; }, 5000);
+        const known = Object.assign({}, Player.sung);
+        delete known.s2; // added by the scan
+        Player.sung = known;
+        mock.calls(true);
+        Api.scanned();
+        tryVerify(function () { return Player.sung.s2 === false; }, 5000, "the song added is looked at");
+        compare(mock.calls(true).filter(function (c) { return c.startsWith("getLyricsBySongId?"); }).length, 1, "only it");
+        Player.sweepLeft = 3; // a sweep running: the scan waits for its end
+        Api.scanned();
+        verify(Player.sweepAgain);
+        Player.sweepAgain = false;
+        Player.sweepLeft = 0;
     }
     // On mobile data, no sweep: tried again later, on Wi-Fi.
     function test_sweep_waits_for_wifi() {
@@ -292,12 +313,14 @@ TestCase {
             Player.sweep();
             tryVerify(function () { return Player.sweepWait.running; }, 5000);
             verify(!Player.swept);
+            verify(Player.sweepPaused);
             verify(!mock.called("getLyricsBySongId"), "nothing asked on mobile data");
-            mock.meter(false);
-            Player.sweepWait.stop();
-            Player.sweep();
+            Player.settings.mobileData = true; // allowed: on at once
             tryVerify(function () { return Player.sung.s0 === true; }, 5000);
+            verify(!Player.sweepPaused);
         } finally {
+            Player.sweepWait.stop();
+            Player.settings.mobileData = false;
             mock.meter(false);
             Api.streamProxy = "";
         }
@@ -307,9 +330,15 @@ TestCase {
         try {
             Api.streamProxy = mock.url + "/?u=";
             mock.calls(true);
+            mock.meter(true); // mobile data: not ahead
             Player.play(tracks(3), 0);
-            tryVerify(function () { return mock.called("ahead", "id=s1"); }, 5000);
+            wait(300);
+            verify(!mock.called("ahead"));
+            mock.meter(false);
+            Player.play(tracks(3), 0);
+            tryVerify(function () { return mock.called("ahead", "id=s1") && mock.called("ahead", "after=s0"); }, 5000);
         } finally {
+            mock.meter(false);
             Api.streamProxy = "";
         }
     }
@@ -335,7 +364,8 @@ TestCase {
         l[1].title = "Creek";
         Player.play([l[1], l[0]], 0);
         tryVerify(function () { return Player.sung.s1 === false; }, 5000);
-        Player.toggleKaraoke();
+        Player.settings.karaoke = true;
+        Player.scout();
         tryVerify(function () { return Player.early !== null && Player.early.id === "s0"; }, 5000);
         Player.next();
         compare(Player.lyrics.length, 3);

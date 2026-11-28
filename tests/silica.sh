@@ -8,7 +8,8 @@
 # window. PAUSE=1 pauses after playing. SCROLL=1 keeps it open 60 s and logs where the
 # page is each frame it moves ("scroll:"), while someone scrolls it. LANDSCAPE=1 turns
 # the device to landscape. PERF=1 opens and closes a page for 20 s and logs the slow
-# frames ("perf:"). KEYBOARD=1 opens the keyboard on the page's first text field.
+# frames ("perf:"); PERF=Page:fling flings the page's list instead. Each run logs the
+# app's memory before it quits ("mem:"). KEYBOARD=1 opens the keyboard on the page's first text field.
 # LOCALE (e.g. en_GB.utf8): the app's language, else the phone's.
 # Each run then checks the app still runs and quits when asked (as closing its card asks),
 # and fails on a crash; the script exits 1 if any page failed.
@@ -47,6 +48,8 @@ i=0; while ! grep -q "^.*shot:" "$log" 2>/dev/null && [ $i -lt 30 ]; do sleep 0.
 if ! pgrep -f "^$dir/ryugin" >/dev/null; then
     echo "FAIL   : not running any more (a crash?)"
 else
+    pid=$(pgrep -f "^$dir/ryugin" | head -1)
+    awk '/^VmRSS/ { r = $2 } /^RssAnon/ { a = $2 } /^Threads/ { t = $2 } END { printf "mem: rss %d MB, own %d MB, threads %d\n", r / 1024, a / 1024, t }' "/proc/$pid/status"
     dbus-send --session --type=method_call --dest=org.mpris.MediaPlayer2.ryugin /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Quit
     i=0; while pgrep -f "^$dir/ryugin" >/dev/null && [ $i -lt 12 ]; do sleep 0.25; i=$((i + 1)); done
     if pgrep -f "^$dir/ryugin" >/dev/null; then echo "FAIL   : did not quit"; pkill -9 -f "^$dir/ryugin"; fi

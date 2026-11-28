@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Effects
 
 // A soft shadow under a rounded rectangle, by MultiEffect (Qt 6.5): RectangularShadow
-// needs Qt 6.9, newer than Sailfish OS's community Qt.
+// needs Qt 6.9, and the app runs on 6.7.
 Item {
     id: shadow
     property real radius: 0

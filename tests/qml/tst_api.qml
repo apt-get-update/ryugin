@@ -42,9 +42,10 @@ TestCase {
     }
 
     // An album hidden (1 star on Navidrome) leaves the lists, and its songs the song lists;
-    // shown again, it is back.
+    // shown again, it is back. Offline, a hide is undone: Navidrome did not hear it.
     function test_hidden_albums() {
         const known = Api.known.albums;
+        const url = Api.settings.url;
         try {
             Api.known.albums = JSON.stringify([{ id: "newest-1", title: "Music for Nine Postcards", artist: "Hiroshi Yoshimura", rating: 1 }]);
             compare(Object.keys(Api.hidden), ["newest-1"]);
@@ -58,7 +59,12 @@ TestCase {
             tryVerify(function () { return mock.called("setRating", "id=a&rating=0"); }, 5000);
             compare(result(function (cb) { Api.starredSongs(cb); })[0].length, 1, "back");
             compare(Object.keys(Api.hidden), ["newest-1"]);
+            Api.settings.url = "http://127.0.0.1:9"; // offline: Navidrome does not hear it
+            Api.hide({ id: "a" }, true);
+            verify(Api.hidden.a !== undefined, "hidden at once");
+            tryVerify(function () { return Api.hidden.a === undefined; }, 5000, "not heard: shown again");
         } finally {
+            Api.settings.url = url;
             Api.known.albums = known;
         }
     }
@@ -76,8 +82,8 @@ TestCase {
             compare(result(function (cb) { Api.metered(cb); })[0], false);
             Api.streamProxy = mock.url + "/?u=";
             mock.calls(true);
-            Api.ahead("s1");
-            tryVerify(function () { return mock.called("ahead", "id=s1"); }, 5000);
+            Api.ahead("s1", "s0");
+            tryVerify(function () { return mock.called("ahead", "id=s1") && mock.called("ahead", "after=s0"); }, 5000);
         } finally {
             mock.meter(false);
             Api.streamProxy = "";
@@ -159,7 +165,6 @@ TestCase {
         compare(result(function (cb) { Api.getPlaylist("p1", cb); })[0].length, 3);
         compare(result(function (cb) { Api.randomSongs(5, cb); })[0].length, 3);
         compare(result(function (cb) { Api.starredSongs(cb); })[0][0].title, "Creek");
-        compare(result(function (cb) { Api.songCount(cb); })[0], 1234);
         const s = result(function (cb) { Api.search("yoshi", cb); })[0];
         compare(s.artists.length, 1);
         compare(s.albums.length, 4);
@@ -289,6 +294,17 @@ TestCase {
         compare(r[1], true);
         compare(r[0][0].text, "moss");
         verify(mock.called("lrclibget", "artist_name=Fuji&"), "artist cleaned of its brackets");
+    }
+
+    // By title alone, a hit counts only by the same artist: an orchestra's "Heroes" does not
+    // get Bowie's, but the singer's own; a name in another script cannot tell, so it counts.
+    function test_lyrics_title_only_same_artist() {
+        let r = result(function (cb) { Api.lyrics({ id: "x4", artist: "Tokyo Philharmonic Orchestra", title: "Heroes (Concert)", album: "", duration: 200 }, cb); });
+        compare(r[0].length, 0, "no one else's lyrics");
+        r = result(function (cb) { Api.lyrics({ id: "x5", artist: "Susan Calloway", title: "Heroes", album: "", duration: 200 }, cb); });
+        compare(r[0][0].text, "heroes of light", "a word of the name in common");
+        r = result(function (cb) { Api.lyrics({ id: "x6", artist: "Hiroshi Yoshimura", title: "Kawa", album: "", duration: 180 }, cb); });
+        compare(r[0][0].text, "かわ", "a romanised tag, the name in kanji");
     }
 
     function test_album_lyrics_by_exact_length() {

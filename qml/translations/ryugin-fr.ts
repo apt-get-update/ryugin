@@ -300,7 +300,6 @@
     </message>
     <message id="ryugin-de-keep_songs_disk">
         <source>Songs played play again from disk, also offline</source>
-        <oldsource>Songs played to the end play again from disk, also offline</oldsource>
         <translation>Les morceaux écoutés sont relus depuis le disque, même hors ligne</translation>
     </message>
     <message id="ryugin-la-covers">
@@ -405,9 +404,9 @@
         <source>Favorites</source>
         <translation>Favoris</translation>
     </message>
-    <message id="ryugin-de-your_favourites">
-        <source>Your favourites</source>
-        <translation>Vos coups de cœur</translation>
+    <message id="ryugin-de-favorites_at_random">
+        <source>Your favorites, at random</source>
+        <translation>Vos favoris, au hasard</translation>
     </message>
     <message id="ryugin-la-karaoke">
         <source>Karaoke</source>
@@ -507,12 +506,11 @@
     </message>
     <message id="ryugin-de-keep_songs">
         <source>Songs played stay on the phone, also for offline use</source>
-        <oldsource>Songs played to the end stay on the phone, also for offline use</oldsource>
         <translation>Les morceaux écoutés restent sur le téléphone, pour l’écoute hors ligne</translation>
     </message>
     <message id="ryugin-la-cache_limit">
-        <source>Songs, at most</source>
-        <translation>Taille maximale</translation>
+        <source>Cache size</source>
+        <translation>Taille du cache</translation>
     </message>
     <message id="ryugin-la-songs">
         <source>Songs</source>
@@ -561,10 +559,6 @@
     <message id="ryugin-me-shuffle">
         <source>Shuffle on / off</source>
         <translation>Aléatoire oui / non</translation>
-    </message>
-    <message id="ryugin-me-karaoke">
-        <source>Karaoke on / off</source>
-        <translation>Karaoké oui / non</translation>
     </message>
     <message id="ryugin-me-view">
         <source>View</source>
@@ -645,6 +639,57 @@
     <message id="ryugin-de-hidden_albums">
         <source>Left out of Home, the lists, the radio and karaoke (1 star on Navidrome)</source>
         <translation>Absents de l’accueil, des listes, de la radio et du karaoké (1 étoile dans Navidrome)</translation>
+    </message>
+    <message id="ryugin-la-mobile_data">
+        <source>Use mobile data</source>
+        <translation>Utiliser les données mobiles</translation>
+    </message>
+    <message id="ryugin-de-mobile_data">
+        <source>Also on mobile data: look for synced lyrics in the library, and download the next song</source>
+        <translation>Aussi sur données mobiles : chercher les paroles synchronisées de la bibliothèque et télécharger le morceau suivant</translation>
+    </message>
+    <message id="ryugin-la-n_lyrics_left" numerus="yes">
+        <source>Lyrics: %n songs left to check</source>
+        <translation>
+            <numerusform>Paroles : %n morceau à vérifier</numerusform>
+            <numerusform>Paroles : %n morceaux à vérifier</numerusform>
+        </translation>
+    </message>
+    <message id="ryugin-la-waiting_wlan">
+        <source>Lyrics: waiting for WLAN</source>
+        <translation>Paroles : en attente du WLAN</translation>
+    </message>
+    <message id="ryugin-me-lyrics">
+        <source>Lyrics</source>
+        <translation>Paroles</translation>
+    </message>
+    <message id="ryugin-la-disc_n">
+        <source>Disc %1</source>
+        <translation>Disque %1</translation>
+    </message>
+    <message id="ryugin-la-no_albums">
+        <source>No albums</source>
+        <translation>Aucun album</translation>
+    </message>
+    <message id="ryugin-la-no_artists">
+        <source>No artists</source>
+        <translation>Aucun artiste</translation>
+    </message>
+    <message id="ryugin-ph-search_albums">
+        <source>Search albums</source>
+        <translation>Rechercher des albums</translation>
+    </message>
+    <message id="ryugin-la-no_results">
+        <source>No results</source>
+        <translation>Aucun résultat</translation>
+    </message>
+    <message id="ryugin-la-heartbeat">
+        <source>Heartbeat</source>
+        <translation>Coup de foudre</translation>
+    </message>
+    <message id="ryugin-la-clearing">
+        <source>Clearing</source>
+        <translation>Effacement</translation>
     </message>
 </context>
 </TS>

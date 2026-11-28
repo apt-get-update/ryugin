@@ -10,6 +10,7 @@ trap 'kill "$mock" 2>/dev/null; rm -rf "$tmp"' EXIT
 # and QML, with no warning. qmllint's import check is off: it reports singletons that the
 # qmldir declares (a qmllint bug); a broken import fails the QML tests anyway.
 golangci-lint run ./...
+golangci-lint run --build-tags silica ./app # the Sailfish OS build too
 /usr/lib/qt6/bin/qmllint -I qml --import disable -W 0 qml/*.qml
 echo "PASS   : code quality (golangci-lint, qmllint)"
 # Go's coverage: the unit tests and the real program's runs below, together.

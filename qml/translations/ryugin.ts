@@ -405,10 +405,6 @@
         <source>Favorites</source>
         <translation type="unfinished"></translation>
     </message>
-    <message id="ryugin-de-your_favourites">
-        <source>Your favourites</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message id="ryugin-la-karaoke">
         <source>Karaoke</source>
         <translation type="unfinished"></translation>
@@ -511,7 +507,8 @@
         <translation type="unfinished"></translation>
     </message>
     <message id="ryugin-la-cache_limit">
-        <source>Songs, at most</source>
+        <source>Cache size</source>
+        <oldsource>Songs, at most</oldsource>
         <translation type="unfinished"></translation>
     </message>
     <message id="ryugin-la-songs">
@@ -560,10 +557,6 @@
     </message>
     <message id="ryugin-me-shuffle">
         <source>Shuffle on / off</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message id="ryugin-me-karaoke">
-        <source>Karaoke on / off</source>
         <translation type="unfinished"></translation>
     </message>
     <message id="ryugin-me-view">
@@ -644,6 +637,62 @@
     </message>
     <message id="ryugin-de-hidden_albums">
         <source>Left out of Home, the lists, the radio and karaoke (1 star on Navidrome)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="ryugin-la-mobile_data">
+        <source>Use mobile data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="ryugin-de-mobile_data">
+        <source>Also on mobile data: look for synced lyrics in the library, and download the next song</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="ryugin-la-n_lyrics_left" numerus="yes">
+        <source>Lyrics: %n songs left to check</source>
+        <translation>
+            <numerusform>Lyrics: %n song left to check</numerusform>
+            <numerusform>Lyrics: %n songs left to check</numerusform>
+        </translation>
+    </message>
+    <message id="ryugin-la-waiting_wlan">
+        <source>Lyrics: waiting for WLAN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="ryugin-me-lyrics">
+        <source>Lyrics</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="ryugin-la-disc_n">
+        <source>Disc %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="ryugin-la-no_albums">
+        <source>No albums</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="ryugin-la-no_artists">
+        <source>No artists</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="ryugin-ph-search_albums">
+        <source>Search albums</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="ryugin-la-no_results">
+        <source>No results</source>
+        <oldsource>No albums</oldsource>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="ryugin-la-clearing">
+        <source>Clearing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="ryugin-la-heartbeat">
+        <source>Heartbeat</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message id="ryugin-de-favorites_at_random">
+        <source>Your favorites, at random</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

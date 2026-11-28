@@ -61,7 +61,6 @@ type mpris struct {
 	conn  *dbus.Conn
 	props *prop.Properties
 	send  func(map[string]any)
-	track *track // the song, for Metadata
 }
 
 type rootObj struct{ m *mpris }
@@ -175,8 +174,7 @@ func (m *mpris) update(s playerState) {
 	m.modes(s)
 	m.props.SetMust(playerIface, "Position", s.Position)
 	if s.Track != nil { // QML sends it only when it changes
-		m.track = s.Track
-		m.props.SetMust(playerIface, "Metadata", metadata(m.track))
+		m.props.SetMust(playerIface, "Metadata", metadata(s.Track))
 	}
 	if s.Seeked {
 		_ = m.conn.Emit(objPath, playerIface+".Seeked", s.Position)

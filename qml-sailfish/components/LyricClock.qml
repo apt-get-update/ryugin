@@ -34,7 +34,9 @@ Item {
     }
 
     Timer {
+        // Only for a line lit word by word: nothing else moves between positions.
         running: clock.running && R.Player.playing && Qt.application.active
+                 && ((R.Player.lyrics[R.Player.lyricIndex] || {}).words || []).length > 0
         interval: 33
         repeat: true
         onTriggered: clock.ms = R.Player.position + Math.min(1000, Date.now() - clock._stamp)

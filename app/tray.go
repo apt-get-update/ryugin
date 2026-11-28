@@ -1,3 +1,5 @@
+//go:build !silica
+
 // Tray icon: click it to show or hide the window; its menu plays, skips and quits.
 // With a tray, closing the window only hides it. It is made even with no tray to show it
 // (and so is tested headless); it says whether there is one.

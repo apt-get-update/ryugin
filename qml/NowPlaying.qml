@@ -44,6 +44,7 @@ Rectangle {
     // and a long enough drag closes it.
     property real pull: 0
     readonly property bool pulling: pullDrag.active
+    Behavior on pull { enabled: !view.pulling; NumberAnimation { duration: 420; easing.type: Easing.OutCubic } } // springs back
 
     // ---- Background, SPlayer-Next's two (the settings' backdrop):
     // "blur": its default, the cover filling the window, 1.5x, blur(45px) saturate(1.2)
@@ -215,7 +216,7 @@ Rectangle {
                 Text { id: title; text: view.t ? view.t.title : ""; color: view.ink; font.pixelSize: view.fs * 2; font.weight: Font.DemiBold }
                 Text { visible: marquee.overflows; text: title.text; color: view.ink; font: title.font }
                 SequentialAnimation on x {
-                    running: marquee.overflows && view.visible
+                    running: marquee.overflows && marquee.visible // not in the layout hidden
                     loops: Animation.Infinite
                     PauseAnimation { duration: 2500 }
                     NumberAnimation { from: 0; to: -(title.implicitWidth + run.spacing); duration: (title.implicitWidth + run.spacing) * 30 }
@@ -417,7 +418,6 @@ Rectangle {
                         height: view.height * 0.075
                         readonly property real big: Math.max(28, view.height * 0.05)
                         Glyph { name: Player.settings.shuffle ? "shuffle" : "play-order"; size: parent.big * 0.5; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.toggleShuffle() }
-                        Glyph { name: "mic-vocal"; x: parent.big; size: parent.big * 0.5; anchors.verticalCenter: parent.verticalCenter; dim: !Player.karaoke; onClicked: Player.toggleKaraoke() }
                         Row {
                             anchors.centerIn: parent
                             spacing: parent.width * 0.09
@@ -509,7 +509,8 @@ Rectangle {
                     function onPositionChanged() { lines.stamp = Date.now(); lines.ms = Player.position; }
                 }
                 FrameAnimation {
-                    running: lines.visible && Player.playing
+                    // Only for a line lit word by word: nothing else moves between positions.
+                    running: lines.visible && Player.playing && ((Player.lyrics[Player.lyricIndex] || {}).words || []).length > 0
                     onTriggered: lines.ms = Player.position + Math.min(1000, Date.now() - lines.stamp)
                 }
                 delegate: Text {
@@ -923,8 +924,6 @@ Rectangle {
                 icon: view.t && view.t.starred ? "heart-fill" : "heart"
                 onClicked: Player.toggleStar()
             }
-            // Karaoke: only songs with synced lyrics play.
-            Btn { objectName: "karaoke"; size: 44; iconSize: 22; icon: "mic-vocal"; dim: !Player.karaoke; onClicked: Player.toggleKaraoke() }
         }
 
         Column { // middle: controls and progress
@@ -1062,8 +1061,9 @@ Rectangle {
             // Far enough, or flicked down: it closes; otherwise it springs back.
             onActiveChanged: if (!active) {
                 if (view.pull > Math.min(160, view.height * 0.2) || (view.pull > 24 && centroid.velocity.y > 800))
-                    Nav.lyrics = false;
-                view.pull = 0;
+                    Nav.lyrics = false; // pull kept: it slides down from there (Main.qml)
+                else
+                    view.pull = 0;
                 from = NaN;
             }
         }

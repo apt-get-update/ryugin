@@ -37,14 +37,10 @@ Item {
     readonly property int fieldWidth: form.width - (labelWidth ? labelWidth + 14 : 0)
     // Close (Main.qml closes the dialog or the popup): a phone has no Escape.
     signal closeRequested()
-    // The bytes the song cache holds, -1 until Go answers.
     // The bytes the cache holds: { songs, covers }; null until Go answers.
     property var used: null
     function showUsed(sizes) { page.used = sizes; }
-    function usedText(kind) { return page.used ? /*% "%1 used" */ qsTrId("ryugin-la-used").arg(page.size(page.used[kind])) : ""; }
-    function size(bytes) {
-        return bytes < 1 << 30 ? /*% "%1 MB" */ qsTrId("ryugin-la-mb").arg(Math.round(bytes / (1 << 20))) : /*% "%1 GB" */ qsTrId("ryugin-la-gb").arg((bytes / (1 << 30)).toFixed(1));
-    }
+    function usedText(kind) { return page.used ? /*% "%1 used" */ qsTrId("ryugin-la-used").arg(Theme.size(page.used[kind])) : ""; }
     onVisibleChanged: if (visible) Api.cache({}, showUsed)
     Component.onCompleted: Api.cache({}, showUsed)
 

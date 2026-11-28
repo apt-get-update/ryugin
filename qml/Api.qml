@@ -40,13 +40,20 @@ QtObject {
     function heard(tracks) {
         return tracks.filter(function (t) { return !hidden[t.albumId]; });
     }
-    // Hide an album (on: 1 star), or show it again (no stars); the pages load again.
+    // Hide an album (on: 1 star), or show it again (no stars); the pages load again. Not
+    // heard by Navidrome (offline): as it was, or the other device would not agree.
     function hide(a, on) {
-        get("setRating", { id: a.id, rating: on ? 1 : 0 });
+        rate(a, on ? 1 : 0);
+        get("setRating", { id: a.id, rating: on ? 1 : 0 }, function (e) {
+            if (e)
+                rate(a, on ? 0 : 1);
+        });
+    }
+    function rate(a, rating) {
         const all = JSON.parse(known.albums || "[]");
         if (!all.some(function (b) { return b.id === a.id; }))
             all.push(a);
-        known.albums = JSON.stringify(all.map(function (b) { return b.id === a.id ? Object.assign({}, b, { rating: on ? 1 : 0 }) : b; }));
+        known.albums = JSON.stringify(all.map(function (b) { return b.id === a.id ? Object.assign({}, b, { rating: rating }) : b; }));
         libraryChanged();
     }
     readonly property bool configured: settings.url !== "" && settings.user !== "" && settings.token !== ""
@@ -132,22 +139,13 @@ QtObject {
     function cache(params, cb) {
         if (streamProxy === "")
             return;
-        const xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function () {
-            if (xhr.readyState !== XMLHttpRequest.DONE)
-                return;
-            let r = null;
-            try {
-                r = JSON.parse(xhr.responseText);
-            } catch (e) {}
-            if (r && cb)
-                cb(r);
-        };
         let q = "";
         for (const k in params)
             q += "&" + k + "=" + encodeURIComponent(params[k]);
-        xhr.open("GET", streamProxy.replace("?u=", "cache?") + q.slice(1));
-        xhr.send();
+        fetchJson(streamProxy.replace("?u=", "cache?") + q.slice(1), function (r) {
+            if (r && cb)
+                cb(r);
+        });
     }
     function stream(id) {
         return relay(url("stream", { id: id, format: "raw", estimateContentLength: true })); // raw: seekable
@@ -156,26 +154,16 @@ QtObject {
     function metered(cb) {
         if (streamProxy === "")
             return cb(false);
-        const xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function () {
-            if (xhr.readyState !== XMLHttpRequest.DONE)
-                return;
-            try {
-                cb(JSON.parse(xhr.responseText).metered === true);
-            } catch (e) {
-                cb(false);
-            }
-        };
-        xhr.open("GET", streamProxy.replace("?u=", "network"));
-        xhr.send();
+        fetchJson(streamProxy.replace("?u=", "network"), function (r) { cb(!!r && r.metered === true); });
     }
-    // The next song, downloaded by Go's relay once the one playing is there: it plays at
-    // once, also with the network gone meanwhile.
-    function ahead(id) {
+    // The song id after the song playing (after), downloaded by Go's relay once that one is
+    // there: it plays at once, also with the network gone meanwhile. A song played that
+    // is not after stops its download.
+    function ahead(id, after) {
         if (streamProxy === "")
             return;
         const xhr = new XMLHttpRequest();
-        xhr.open("GET", stream(id).replace("/?u=", "/ahead?u="));
+        xhr.open("GET", stream(id).replace("/?u=", "/ahead?after=" + encodeURIComponent(after) + "&u="));
         xhr.send();
     }
 
@@ -197,8 +185,20 @@ QtObject {
         return {
             id: a.id, title: a.name || a.title || "", artist: a.artist || "", artistId: a.artistId || "",
             cover: a.coverArt || "", year: a.year || 0, songCount: a.songCount || 0,
-            duration: a.duration || 0, starred: !!a.starred, rating: a.userRating || 0
+            duration: a.duration || 0, starred: !!a.starred, rating: a.userRating || 0,
+            // Navidrome's disc titles ("Live", "Bonus"...), by disc number.
+            discTitles: (a.discTitles || []).reduce(function (m, d) { m[d.disc] = d.title || ""; return m; }, {})
         };
+    }
+    // A multi-disc album's song that starts its disc: there its page names the disc.
+    function discStart(tracks, i) {
+        return tracks[tracks.length - 1].disc !== tracks[0].disc // sorted by disc
+            && (i === 0 || tracks[i - 1].disc !== tracks[i].disc);
+    }
+    // "Disc 2", with its title when it has one.
+    function discName(album, disc) {
+        const title = album && album.discTitles ? album.discTitles[disc] || "" : "";
+        return /*% "Disc %1" */ qsTrId("ryugin-la-disc_n").arg(disc) + (title ? "  ·  " + title : "");
     }
 
     // recent, frequent, starred, newest, random, alphabeticalByName...
@@ -320,8 +320,8 @@ QtObject {
 
     // Synced lyrics from LRCLIB, or else the plain ones we already have (or LRCLIB's).
     // Exact match first, then a search by artist and title, then by title alone (only a
-    // hit of about the same length counts), then by the song's original title from
-    // MusicBrainz (an English tag, Japanese lyrics).
+    // hit of about the same length, by the same artist, counts), then by the song's
+    // original title from MusicBrainz (an English tag, Japanese lyrics).
     function lrclib(t, plain, cb) {
         const artist = clean(t.artist); // "A (feat. B)" -> "A"
         const q = "track_name=" + encodeURIComponent(clean(t.title)); // "Song [Show]" -> "Song"
@@ -341,14 +341,14 @@ QtObject {
                 if (best && best.syncedLyrics)
                     return done(best);
                 fetchJson(lrclibUrl + "search?" + q, function (list2) {
-                    const near = pickHit(list2, t.duration, 2) || best;
+                    const near = pickHit(byArtist(list2, t.artist), t.duration, 2) || best;
                     if (near || plain.length)
                         return done(near);
                     original(t, function (o) {
                         if (!o)
                             return done(null);
                         fetchJson(lrclibUrl + "search?track_name=" + encodeURIComponent(o.title), function (list3) {
-                            done(pickHit(list3, t.duration, 5));
+                            done(pickHit(byArtist(list3, o.artist || t.artist), t.duration, 5));
                         });
                     });
                 });
@@ -356,16 +356,33 @@ QtObject {
         });
     }
 
-    // The hit with words (synced first); with a length, only hits that long (± slack s).
     // A hit's plain lyrics only (its timing belongs to another recording).
     function plainOnly(h) {
         return h ? { plainLyrics: h.plainLyrics || h.syncedLyrics || "" } : null;
     }
+    // The hit with words (synced first); with a length, only hits that long (± slack s).
     function pickHit(list, length, slack) {
         list = (Array.isArray(list) ? list : []).filter(function (h) {
             return !length || Math.abs(h.duration - length) <= slack;
         });
         return list.find(function (h) { return h.syncedLyrics; }) || list.find(function (h) { return h.plainLyrics; });
+    }
+
+    // The hits found by title alone that are by this artist: a word of the name in common
+    // ("Heroes" by an orchestra is not Bowie's, whatever its length). Names written in
+    // other scripts (a romanised tag, the name in kana) cannot tell: kept, as a hit with
+    // no artist.
+    function byArtist(list, artist) {
+        const cjk = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/;
+        const words = function (s) {
+            return (s || "").normalize("NFKC").toLowerCase().split(/[\s\-\u2010-\u2015_.,;:!?'\u2019"()\[\]&\/+\u00d7\u30fb]+/).filter(function (w) { return w.length > 1 || cjk.test(w); });
+        };
+        const mine = words(artist);
+        return (Array.isArray(list) ? list : []).filter(function (h) {
+            const theirs = words(h.artistName);
+            return !mine.length || !theirs.length || cjk.test(artist) !== cjk.test(h.artistName)
+                || theirs.some(function (w) { return mine.indexOf(w) >= 0; });
+        });
     }
 
     // "Let's Go!! Rider Kick [Masked Rider]" -> "Let's Go!! Rider Kick"
@@ -405,20 +422,8 @@ QtObject {
         });
     }
     function mbJson(path, cb) {
-        const xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function () {
-            if (xhr.readyState !== XMLHttpRequest.DONE)
-                return;
-            let r = null;
-            try {
-                r = xhr.status === 200 ? JSON.parse(xhr.responseText) : null;
-            } catch (e) {}
-            cb(r);
-        };
-        xhr.open("GET", mbUrl + path);
-        xhr.setRequestHeader("User-Agent", "ryugin/1.0 ( https://codeberg.org )"); // MusicBrainz asks for one
-        xhr.setRequestHeader("Accept", "application/json");
-        xhr.send();
+        // MusicBrainz asks for a User-Agent.
+        fetchJson(mbUrl + path, cb, { "User-Agent": "ryugin/1.0 ( https://codeberg.org )", "Accept": "application/json" });
     }
 
     // Last try, for songs tagged in another language than LRCLIB has them (an English
@@ -442,7 +447,8 @@ QtObject {
         });
     }
 
-    function fetchJson(u, cb) {
+    // The JSON at u (null: none, or not a 200); headers: optional.
+    function fetchJson(u, cb, headers) {
         const xhr = new XMLHttpRequest();
         xhr.onreadystatechange = function () {
             if (xhr.readyState !== XMLHttpRequest.DONE)
@@ -454,6 +460,8 @@ QtObject {
             cb(r);
         };
         xhr.open("GET", u);
+        for (const h in headers || {})
+            xhr.setRequestHeader(h, headers[h]);
         xhr.send();
     }
 
@@ -554,8 +562,11 @@ QtObject {
     property bool scanning: false
     property int songTotal: 0
     signal libraryChanged()
+    signal scanned() // a scan done: songs added (or gone)
     onConfiguredChanged: lastScan = ""
     readonly property Timer scanWait: Timer { interval: 30000; onTriggered: api.checkLibrary() }
+    // Both UIs: back to the app, and every 10 minutes while it is in front.
+    readonly property Timer libraryWatch: Timer { running: Qt.application.state === Qt.ApplicationActive; interval: 600000; repeat: true; triggeredOnStart: true; onTriggered: api.checkLibrary() }
     function checkLibrary() {
         if (!configured)
             return;
@@ -572,8 +583,10 @@ QtObject {
             if (lastScan === "" || changed)
                 allAlbums(function () {}); // the albums hidden elsewhere (the other device)
             lastScan = s.lastScan;
-            if (changed)
+            if (changed) {
+                scanned();
                 libraryChanged();
+            }
         });
     }
 
@@ -587,12 +600,6 @@ QtObject {
             }
             if (cb)
                 cb(e);
-        });
-    }
-
-    function songCount(cb) {
-        get("getScanStatus", {}, function (e, r) {
-            cb((r && r.scanStatus && r.scanStatus.count) || 0);
         });
     }
 

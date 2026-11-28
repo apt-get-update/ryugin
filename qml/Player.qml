@@ -77,6 +77,7 @@ QtObject {
         property string repeat: "off"
         property bool karaoke: false // only songs with synced lyrics play
         property string sung: "{}" // song id -> synced lyrics found (true) or not (false), JSON
+        property bool mobileData: false // the lyrics sweep and the next song's download on mobile data too
     }
     readonly property Prefs settings: Prefs {}
     // The last 20 songs played, newest first: Navidrome only keeps recent albums.
@@ -134,10 +135,6 @@ QtObject {
             scout();
         });
     }
-    function toggleKaraoke() {
-        settings.karaoke = !settings.karaoke;
-        scout();
-    }
     // Karaoke on, list mixed: songs known to have synced lyrics first, those known without
     // left out (500 at most).
     function playKaraoke(list) {
@@ -146,27 +143,57 @@ QtObject {
         settings.karaoke = true; // after play, which ends it
     }
     // The library looked at once a run for songs with synced lyrics on Navidrome (only the
-    // songs not known yet: all of them the first time), so karaoke plays them from the start.
-    // Only on Wi-Fi: thousands of requests are not for mobile data. On it, the sweep stops
-    // and is tried again every 10 minutes.
+    // songs not known yet: all of them the first time), so karaoke plays them from the start;
+    // again after each scan, for the songs it added (sweepAgain: once the sweep running is
+    // done). Only on Wi-Fi (thousands of requests), unless the settings allow mobile data.
+    // On it, the sweep stops and is tried again every 10 minutes (sweepPaused).
     property bool swept: false
     property int sweepLeft: 0
+    property bool sweepPaused: false
+    property bool sweepAgain: false
+    readonly property Connections scans: Connections {
+        target: Api
+        function onScanned() {
+            if (p.sweepLeft > 0)
+                p.sweepAgain = true;
+            else if (!p.sweepPaused) {
+                p.swept = false;
+                p.sweep();
+            }
+        }
+    }
     readonly property Timer sweepWait: Timer { interval: 600000; onTriggered: p.sweep() }
     function sweep() {
         if (swept || !Api.configured)
             return;
         swept = true;
-        Api.metered(function (paid) {
-            if (paid)
+        sweepPaused = false;
+        sweepAgain = false; // the list it asks for has the songs added
+        cheap(function (ok) {
+            if (!ok)
                 return later();
             Api.allSongs(sweepThrough);
         });
+    }
+    // cb(true) when the network may be used for more than the song playing: not mobile
+    // data, or the settings allow it.
+    function cheap(cb) {
+        Api.metered(function (paid) { cb(!paid || settings.mobileData); });
     }
     // The sweep put off: mobile data.
     function later() {
         swept = false;
         sweepLeft = 0;
+        sweepPaused = true;
         sweepWait.restart();
+    }
+    // Mobile data allowed: the sweep put off goes on at once.
+    readonly property Connections mobileAllowed: Connections {
+        target: p.settings
+        function onMobileDataChanged() {
+            if (p.settings.mobileData && p.sweepPaused)
+                p.sweep();
+        }
     }
     function sweepThrough(all) {
         const todo = all.filter(function (t) { return sung[t.id] === undefined; });
@@ -177,8 +204,8 @@ QtObject {
             const m = Object.assign({}, found, sung);
             settings.sung = JSON.stringify(m);
             sung = m;
-            Api.metered(function (paid) {
-                if (paid && todo.length) {
+            cheap(function (ok) {
+                if (!ok && todo.length) {
                     todo.length = 0;
                     later();
                 }
@@ -193,6 +220,10 @@ QtObject {
                     sweepLeft = Math.max(0, sweepLeft - 1); // 0 at once when put off
                     if (sweepLeft % 100 === 0)
                         save();
+                    if (sweepLeft === 0 && sweepAgain && !sweepPaused) {
+                        swept = false;
+                        sweep();
+                    }
                     step();
                 });
         };
@@ -404,9 +435,12 @@ QtObject {
         report(true, false);
         lookCover();
         const i = ahead(index + 1); // the next song, downloaded once this one is there
-        const after = i < queue.length ? queue[i] : (repeat === "all" && !settings.shuffle ? queue[0] : null);
-        if (after && after.id !== id)
-            Api.ahead(after.id);
+        const next = i < queue.length ? queue[i] : (repeat === "all" && !settings.shuffle ? queue[0] : null);
+        if (next && next.id !== id)
+            cheap(function (ok) {
+                if (ok)
+                    Api.ahead(next.id, id);
+            });
     }
 
     // Ask Go for the cover's colour and the fullscreen backdrop (made for its size).
@@ -599,6 +633,13 @@ QtObject {
             else if (c.cmd === "playPause" || !playing)
                 toggle();
             break;
+        case "coverColor": // the song's colours (color.go): only for the song still playing
+            if (current && c.url === Api.cover(current.cover, 128)) {
+                Theme.seed = c.color;
+                Theme.wash = c.wash || "";
+                Theme.flow = c.flow || "";
+            }
+            break;
         case "pause": media.pause(); break;
         case "stop": going = false; media.stop(); break;
         case "next": next(); break;
@@ -613,7 +654,7 @@ QtObject {
         case "setShuffle": if (c.value !== settings.shuffle) toggleShuffle(); break;
         case "setLoop": repeat = ({ None: "off", Playlist: "all", Track: "one" })[c.value] || repeat; break;
         case "lucky": Api.randomSongs(50, function (l) { play(l, 0); }); break;
-        case "karaoke": toggleKaraoke(); break;
+        case "karaoke": Api.allSongs(playKaraoke); break;
         }
     }
 }

@@ -12,10 +12,22 @@ Page {
     property var albums: []
     property bool loaded
 
-    Component.onCompleted: R.Api.getArtist(artistId, function (n, list) {
-        page.albums = list
-        page.loaded = true
-    })
+    function load() {
+        R.Api.getArtist(artistId, function (n, list) {
+            if (!page)
+                return // gone before Navidrome answered
+            page.albums = list
+            page.loaded = true
+        })
+    }
+
+    Component.onCompleted: load()
+
+    Connections {
+        target: R.Api
+
+        function onLibraryChanged() { page.load() } // a scan done, an album hidden
+    }
 
     SilicaGridView {
         id: grid
@@ -37,10 +49,14 @@ Page {
             album: modelData
         }
 
-        BusyIndicator {
-            anchors.centerIn: parent
-            size: BusyIndicatorSize.Large
+        PageBusyIndicator {
             running: !page.loaded
+        }
+
+        ViewPlaceholder {
+            enabled: page.loaded && page.albums.length === 0
+            text: qsTrId("ryugin-la-no_albums")
+            hintText: R.Api.error
         }
 
         VerticalScrollDecorator {}

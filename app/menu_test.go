@@ -1,8 +1,10 @@
+//go:build !silica
+
 package main
 
 import (
 	"os"
-	"runtime"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,7 +12,6 @@ import (
 )
 
 // Qt wants its widgets on the main thread: tests hand it their Qt work through onQt.
-func init() { runtime.LockOSThread() }
 
 var qtWork = make(chan func())
 
@@ -135,4 +136,13 @@ func TestTray(t *testing.T) {
 			t.Error("menu")
 		}
 	})
+}
+
+// A theme icon whose SVG is gone (a broken link): nothing drawn, no crash.
+func TestDrawIconGone(t *testing.T) {
+	dir := t.TempDir()
+	drawIcon(filepath.Join(dir, "gone.svg"), filepath.Join(dir, "gone"))
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Error("drawn:", entries)
+	}
 }

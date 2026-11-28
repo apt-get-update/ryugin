@@ -57,7 +57,7 @@ Rectangle {
         }
         Text {
             visible: side.wide
-            x: e.icon !== "" ? 34 : 34
+            x: 34
             width: parent.width - x - countText.width - 12
             anchors.verticalCenter: parent.verticalCenter
             text: e.label
@@ -105,6 +105,16 @@ Rectangle {
         onTextEdited: Nav.search(text.trim()) // empty: back to the page before
         onAccepted: if (text.trim() !== "") Nav.search(text.trim())
         Connections { target: Nav; function onFocusSearch() { if (search.visible) search.forceActiveFocus(); } }
+        // Escape leaves the field (before the window's Escape, which goes back), and folds the
+        // sidebar again if the search opened it.
+        Keys.onShortcutOverride: function (e) { e.accepted = e.key === Qt.Key_Escape; }
+        Keys.onEscapePressed: {
+            const fold = Nav.refold;
+            focus = false;
+            if (fold)
+                Nav.layout.folded = true;
+        }
+        onActiveFocusChanged: if (!activeFocus) Nav.refold = false // left otherwise: it stays open
     }
 
     Flickable {
@@ -119,7 +129,7 @@ Rectangle {
             id: places
             width: parent.width
             spacing: 2
-            Entry { visible: !side.wide; icon: "search"; label: /*% "Search (Ctrl+F)" */ qsTrId("ryugin-la-search_ctrl_f"); onClicked: { Nav.layout.folded = false; Qt.callLater(Nav.focusSearch); } }
+            Entry { visible: !side.wide; icon: "search"; label: /*% "Search (Ctrl+F)" */ qsTrId("ryugin-la-search_ctrl_f"); onClicked: Nav.openSearch() }
             // What plays at once: tool buttons, apart from the places below (which open a page).
             // A button group (a toolbar well), apart from the list of places.
             // It ends with its last button (open), or spans the rail (folded).
@@ -139,7 +149,7 @@ Rectangle {
                     spacing: 2
                     IconButton { objectName: "lucky"; icon: "dices"; iconSize: 16; tip: /*% "Roll the dice" */ qsTrId("ryugin-la-roll_the_dice"); onClicked: Api.randomSongs(50, function (l) { Player.play(l, 0); }) }
                     IconButton { objectName: "radio"; icon: "radio"; iconSize: 16; tip: /*% "Library radio" */ qsTrId("ryugin-la-library_radio"); onClicked: Api.randomSongs(500, function (l) { Player.play(l, 0); }) }
-                    IconButton { objectName: "playFavorites"; icon: "favorite"; iconSize: 16; tip: /*% "Play favorites, mixed" */ qsTrId("ryugin-la-play_favorites_mixed"); onClicked: Api.starredSongs(function (l) { Player.playMixed(l); }) }
+                    IconButton { objectName: "playFavorites"; icon: "heartbeat"; iconSize: 16; tip: /*% "Play favorites, mixed" */ qsTrId("ryugin-la-play_favorites_mixed"); onClicked: Api.starredSongs(function (l) { Player.playMixed(l); }) }
                     IconButton { objectName: "karaoke"; icon: "mic-vocal"; iconSize: 16; tip: /*% "Karaoke: songs with synced lyrics" */ qsTrId("ryugin-la-karaoke_tip"); onClicked: Api.allSongs(function (l) { Player.playKaraoke(l); Nav.lyrics = true; }) }
                 }
             }

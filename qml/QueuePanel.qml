@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls as C
+import Qt.labs.qmlmodels
 
 // The play queue, docked at the right as in Cantata: one cover per album, its songs under
 // it. Click a song to play it (the playing one is lit), an album's head to open it; drag a
@@ -104,130 +105,138 @@ Rectangle {
         model: panel.rows
         C.ScrollBar.vertical: Scroller {}
         Component.onCompleted: positionViewAtIndex(Math.max(0, panel.rowOf(Player.index)), ListView.Center)
-        delegate: Item {
-            id: row
-            required property var modelData
-            readonly property bool playing: !modelData.head && modelData.index === Player.index
-            width: list.width
-            height: modelData.head ? 62 : 32
-            opacity: panel.dragFrom >= 0 && !modelData.head && modelData.index === panel.dragFrom ? 0.35 : 1
-            // An album's head: its cover, name and artist.
-            Item {
-                visible: row.modelData.head
-                anchors.fill: parent
-                Cover { id: c; x: 8; y: 10; width: 44; height: 44; size: 120; radius: 4; coverId: row.modelData.t.cover }
-                Column {
-                    anchors.left: c.right
-                    anchors.leftMargin: 12
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: c.verticalCenter
-                    spacing: 2
-                    Text { width: parent.width; text: row.modelData.t.album; color: Theme.text; font.pixelSize: 13; elide: Text.ElideRight }
-                    Text { width: parent.width; text: row.modelData.t.artist; color: Theme.faint; font.pixelSize: 11; elide: Text.ElideRight }
+        // Two kinds of rows, each made with only its own parts: an album's head under its
+        // cover, a song as text, its heart only when liked, its grip and × only on hover.
+        // One row made with both kinds hidden took a whole frame to scroll a long queue.
+        delegate: DelegateChooser {
+            role: "head"
+            // An album's head: its cover, name and artist; a click opens it.
+            DelegateChoice {
+                roleValue: true
+                Item {
+                    id: album
+                    required property var modelData
+                    width: list.width
+                    height: 62
+                    Cover { id: c; x: 8; y: 10; width: 44; height: 44; size: 120; radius: 4; coverId: album.modelData.t.cover }
+                    Column {
+                        anchors.left: c.right
+                        anchors.leftMargin: 12
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: c.verticalCenter
+                        spacing: 2
+                        Text { width: parent.width; text: album.modelData.t.album; color: Theme.text; font.pixelSize: 13; elide: Text.ElideRight }
+                        Text { width: parent.width; text: album.modelData.t.artist; color: Theme.faint; font.pixelSize: 11; elide: Text.ElideRight }
+                    }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: if (album.modelData.t.albumId) Nav.openAlbum(album.modelData.t.albumId) }
                 }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: if (row.modelData.t.albumId) Nav.openAlbum(row.modelData.t.albumId) }
             }
             // A song: click plays it, its grip (on hover, at the left) moves it.
-            Rectangle {
-                visible: !row.modelData.head
-                anchors.fill: parent
-                radius: 4
-                color: Theme.lit(row.playing, area.containsMouse)
-                HoverHandler { id: hover } // the × too (a button over the row takes its hover)
-                MouseArea {
-                    id: area
-                    objectName: "queueSong"
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: Player.jump(row.modelData.index)
-                }
-                // The grip, as in Elisa: it keeps the drag from the list (which scrolls
-                // otherwise).
-                MouseArea {
-                    id: grip
-                    objectName: "queueGrip"
-                    readonly property bool dragging: pressed
-                    width: 36
-                    height: parent.height
-                    preventStealing: true
-                    hoverEnabled: true
-                    cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-                    onPressed: function (mouse) {
-                        panel.dragTitle = row.modelData.t.title;
-                        panel.dragY = mapToItem(list, 0, mouse.y).y;
-                        panel.dragStart = list.contentY;
-                        panel.dragFrom = row.modelData.index;
+            DelegateChoice {
+                roleValue: false
+                Rectangle {
+                    id: row
+                    required property var modelData
+                    readonly property bool playing: modelData.index === Player.index
+                    readonly property bool held: hover.hovered || grip.pressed // the grip shown
+                    width: list.width
+                    height: 32
+                    radius: 4
+                    color: Theme.lit(row.playing, area.containsMouse)
+                    opacity: modelData.index === panel.dragFrom ? 0.35 : 1
+                    HoverHandler { id: hover } // the × too (a button over the row takes its hover)
+                    MouseArea {
+                        id: area
+                        objectName: "queueSong"
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: Player.jump(row.modelData.index)
                     }
-                    onPositionChanged: function (mouse) { if (pressed) panel.dragY = mapToItem(list, 0, mouse.y).y; }
-                    onReleased: {
-                        const from = panel.dragFrom, to = panel.dragTo;
-                        panel.dragFrom = -1;
-                        Player.move(from, to);
+                    // The grip, as in Elisa: it keeps the drag from the list (which scrolls
+                    // otherwise).
+                    MouseArea {
+                        id: grip
+                        objectName: "queueGrip"
+                        width: 36
+                        height: parent.height
+                        preventStealing: true
+                        hoverEnabled: true
+                        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                        onPressed: function (mouse) {
+                            panel.dragTitle = row.modelData.t.title;
+                            panel.dragY = mapToItem(list, 0, mouse.y).y;
+                            panel.dragStart = list.contentY;
+                            panel.dragFrom = row.modelData.index;
+                        }
+                        onPositionChanged: function (mouse) { if (pressed) panel.dragY = mapToItem(list, 0, mouse.y).y; }
+                        onReleased: {
+                            const from = panel.dragFrom, to = panel.dragTo;
+                            panel.dragFrom = -1;
+                            Player.move(from, to);
+                        }
+                        onCanceled: panel.dragFrom = -1
                     }
-                    onCanceled: panel.dragFrom = -1
-                }
-                Icon {
-                    x: 14
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: hover.hovered || grip.dragging
-                    name: "grip-vertical"
-                    size: 14
-                    color: grip.containsMouse || grip.pressed ? Theme.text : Theme.dim
-                }
-                Text {
-                    visible: !hover.hovered && !grip.dragging
-                    x: 8
-                    width: 22
-                    anchors.verticalCenter: parent.verticalCenter
-                    horizontalAlignment: Text.AlignRight
-                    text: row.playing ? "▶" : (row.modelData.t.number || "")
-                    color: row.playing ? Theme.gold : Theme.faint
-                    font.pixelSize: 11
-                }
-                Text {
-                    x: 40
-                    width: parent.width - x - 64
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: row.modelData.t.title
-                    color: row.playing ? Theme.gold : Theme.text
-                    font.pixelSize: 13
-                    elide: Text.ElideRight
-                }
-                Icon {
-                    anchors.right: time.left
-                    anchors.rightMargin: 6
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: !!row.modelData.t.starred
-                    name: "heart-fill"
-                    size: 12
-                    color: Theme.gold
-                }
-                Text {
-                    id: time
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 30
-                    horizontalAlignment: Text.AlignRight
-                    visible: !hover.hovered || grip.dragging
-                    text: row.modelData.t.duration ? Theme.time(row.modelData.t.duration) : ""
-                    color: Theme.faint
-                    font.pixelSize: 11
-                }
-                // On hover: take it out.
-                IconButton {
-                    objectName: "queueRemove"
-                    visible: hover.hovered && !grip.dragging
-                    anchors.right: parent.right
-                    anchors.rightMargin: 2
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 28
-                    height: 28
-                    icon: "x"
-                    iconSize: 12
-                    tip: /*% "Remove" */ qsTrId("ryugin-me-remove")
-                    onClicked: Player.removeAt(row.modelData.index)
+                    Loader {
+                        x: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        active: row.held
+                        sourceComponent: Icon { name: "grip-vertical"; size: 14; color: grip.containsMouse || grip.pressed ? Theme.text : Theme.dim }
+                    }
+                    Text {
+                        visible: !row.held
+                        x: 8
+                        width: 22
+                        anchors.verticalCenter: parent.verticalCenter
+                        horizontalAlignment: Text.AlignRight
+                        text: row.playing ? "▶" : (row.modelData.t.number || "")
+                        color: row.playing ? Theme.gold : Theme.faint
+                        font.pixelSize: 11
+                    }
+                    Text {
+                        x: 40
+                        width: parent.width - x - 64
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: row.modelData.t.title
+                        color: row.playing ? Theme.gold : Theme.text
+                        font.pixelSize: 13
+                        elide: Text.ElideRight
+                    }
+                    Loader {
+                        anchors.right: time.left
+                        anchors.rightMargin: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        active: !!row.modelData.t.starred
+                        sourceComponent: Icon { name: "heart-fill"; size: 12; color: Theme.gold }
+                    }
+                    Text {
+                        id: time
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 30
+                        horizontalAlignment: Text.AlignRight
+                        visible: !hover.hovered || grip.pressed
+                        text: row.modelData.t.duration ? Theme.time(row.modelData.t.duration) : ""
+                        color: Theme.faint
+                        font.pixelSize: 11
+                    }
+                    // On hover: take it out.
+                    Loader {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 2
+                        anchors.verticalCenter: parent.verticalCenter
+                        active: hover.hovered && !grip.pressed
+                        sourceComponent: IconButton {
+                            objectName: "queueRemove"
+                            width: 28
+                            height: 28
+                            icon: "x"
+                            iconSize: 12
+                            tip: /*% "Remove" */ qsTrId("ryugin-me-remove")
+                            onClicked: Player.removeAt(row.modelData.index)
+                        }
+                    }
                 }
             }
         }

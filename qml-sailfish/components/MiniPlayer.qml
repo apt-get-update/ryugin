@@ -3,10 +3,10 @@ import QtQuick.Effects
 import Sailfish.Silica 1.0
 import "../../qml" as R
 
-// The song playing, docked over the end of every page but its own (Now playing, Lyrics):
-// its cover, title and artist, play/pause and next; a tap opens it. Frosted glass: the
-// page under it blurred, toned as the ambience's panels, in the song's colours (those of
-// the page stack, ryugin.qml).
+// The song playing, docked over the end of every page but its own (Now playing, its queue
+// and lyrics): its cover, title and artist, play/pause and next; a tap opens it. Frosted
+// glass: the page under it blurred, toned as the ambience's panels, in the song's colours
+// (those of the page stack, ryugin.qml).
 DockedPanel {
     id: panel
 
@@ -16,12 +16,23 @@ DockedPanel {
     readonly property var songPalette: content.palette
     readonly property bool _songPage: pageStack.currentPage !== null
                                       && (pageStack.currentPage.objectName === "nowPlaying"
+                                          || pageStack.currentPage.objectName === "queue"
                                           || pageStack.currentPage.objectName === "lyrics")
 
     width: parent.width
     height: Theme.itemSizeLarge
     dock: Dock.Bottom
-    open: R.Player.current !== null && !_songPage
+    // Out of the keyboard's way, as Jolla's media panel.
+    opacity: Qt.inputMethod.visible ? 0 : 1
+
+    Behavior on opacity {
+        FadeAnimation {}
+    }
+    // A Binding, not a plain one: a swipe down sets open itself, which would end a plain
+    // binding and leave the player gone.
+    Binding on open {
+        value: R.Player.current !== null && !panel._songPage
+    }
 
     // Silica glass, as Backdrop: what is under the bar (at a quarter size: a strong blur),
     // blurred, toned to the scheme, tinted with the highlight dimmer, dithered, and the
@@ -40,9 +51,9 @@ DockedPanel {
             // out of reach), a base the page's text cannot show through.
             Rectangle {
                 anchors.fill: parent
-                visible: !R.Theme.settings.followCover
+                visible: opacity > 0
                 color: glass.light ? "white" : "black"
-                opacity: 0.85
+                opacity: 0.85 * (1 - R.Theme.k) // fades as the cover's ambience comes
             }
             // The window under the bar, its wallpaper and page together (text has no
             // background: a page alone blurs thin and lets it through), with a margin
@@ -132,7 +143,7 @@ DockedPanel {
 
         MouseArea {
             anchors.fill: parent
-            onClicked: pageStack.animatorPush(Qt.resolvedUrl("../pages/NowPlayingPage.qml"))
+            onClicked: R.Nav.open("NowPlayingPage")
         }
 
         Image {
@@ -188,6 +199,7 @@ DockedPanel {
                 onClicked: R.Player.toggle()
             }
             IconButton {
+                enabled: R.Player.queue.length > 1 // something to go forward to, as Now playing's
                 icon.source: "image://theme/icon-m-next"
                 onClicked: R.Player.next()
             }

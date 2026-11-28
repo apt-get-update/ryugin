@@ -1,5 +1,7 @@
-// Ryūgin: a Navidrome player. The UI, the Subsonic calls and playback are
-// QML (qml/); Go starts it and serves MPRIS (mpris.go) so media keys and shell widgets work.
+// Ryūgin: a Navidrome player. The UI, the Subsonic calls and playback are QML (qml/); Go
+// starts it, serves MPRIS (mpris.go) so media keys and shell widgets work, relays and
+// caches the streams and covers (stream.go), takes each cover's colours (color.go) and, on
+// Sailfish OS, tells the keyboard how the app faces (container.go).
 //
 // Bridge: QML sends JSON to Go by setting goBridge.objectName; Go sends JSON to QML by
 // setting the root window's goCommand property.
@@ -11,6 +13,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
@@ -48,8 +51,10 @@ func qtSetup() {
 	qt.QSurfaceFormat_SetDefaultFormat(f)
 }
 
-// loadQML loads dir/Main.qml with goBridge and goStreamProxy set, and returns its window
-// and the bridge.
+// Qt runs on the main thread: main's goroutine stays on it from the start (Keel makes its
+// application in C, and the desktop checks D-Bus before making its own).
+func init() { runtime.LockOSThread() }
+
 // translate loads the texts (qsTrId in QML, qtTrId in Go) as Sailfish apps do: the English
 // (ryugin_eng_en.qm) under the system's language (ryugin-<lang>.qm), from qml/translations
 // (make ts, make qm). A missing file leaves its translator empty.
@@ -59,21 +64,6 @@ func translate(dir string) {
 	local.Load8(qt.NewQLocale(), "ryugin", "-", dir)
 	qt.QCoreApplication_InstallTranslator(english)
 	qt.QCoreApplication_InstallTranslator(local)
-}
-
-// qtTrId is Qt's: the text for a translation id; make ts finds the calls and the English
-// in the //% comment above each.
-func qtTrId(id string) string { return qt.QCoreApplication_Translate("", id) } //nolint:revive,stylecheck // Qt's name, for lupdate
-
-func loadQML(dir string) (*qt.QObject, *qt.QObject) {
-	engine := qml.NewQQmlApplicationEngine()
-	bridge := setContext(engine.RootContext())
-	engine.LoadWithFilePath(filepath.Join(dir, "Main.qml"))
-	roots := engine.RootObjects()
-	if len(roots) == 0 {
-		log.Fatal("QML failed to load (set RYUGIN_QML to the qml folder)")
-	}
-	return roots[0], bridge
 }
 
 // iconDir: the desktop theme's icons drawn as PNGs (themeIcons), for QML's goIconDir;
@@ -104,7 +94,9 @@ func sender(root *qt.QObject) func(map[string]any) {
 			n++
 			cmd["n"] = n // a new value each time, so QML always sees a change
 			data, _ := json.Marshal(cmd)
-			root.SetProperty("goCommand", qt.NewQVariant14(string(data)))
+			v := qt.NewQVariant14(string(data))
+			root.SetProperty("goCommand", v) // a copy: miqt frees none of its own
+			v.Delete()
 		})
 	}
 }
@@ -123,8 +115,7 @@ func startMpris(send func(map[string]any)) *mpris {
 }
 
 // fromQML handles what QML sends (QML -> Go): the player state for MPRIS, the way the app
-// faces for the keyboard, or a cover to
-// take the colours from.
+// faces for the keyboard, or a cover to take the colours from.
 func fromQML(player *mpris, send func(map[string]any)) func(string) {
 	return func(msg string) {
 		var req struct {
@@ -143,7 +134,7 @@ func fromQML(player *mpris, send func(map[string]any)) func(string) {
 			go func() {
 				c, w, f, err := coverLook(req.CoverURL, req.Side)
 				if err != nil {
-					log.Println("cover colour:", err)
+					log.Println("cover colour:", noURL(err))
 					return
 				}
 				send(map[string]any{"cmd": "coverColor", "color": c, "wash": w, "flow": f, "url": req.CoverURL})

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -147,7 +148,7 @@ func TestSongCache(t *testing.T) {
 	}
 }
 
-// A copy cut short, or one with nowhere to go, is dropped.
+// A cover cut short, or one with nowhere to go, is dropped.
 func TestSongCacheDropped(t *testing.T) {
 	dir := t.TempDir()
 	for _, c := range []struct {
@@ -160,7 +161,7 @@ func TestSongCacheDropped(t *testing.T) {
 		{-1, filepath.Join(dir, "cut"), 1},      // size unknown, not read to the end
 	} {
 		f, _ := os.CreateTemp(dir, ".part-*")
-		body := &caching{ReadCloser: io.NopCloser(strings.NewReader("abc")), f: f, total: c.total, path: c.path, cache: &store{dir: dir}}
+		body := &caching{ReadCloser: io.NopCloser(strings.NewReader("abc")), f: f, total: c.total, path: c.path}
 		if c.read == 3 {
 			io.ReadAll(body)
 		} else {
@@ -255,6 +256,7 @@ func TestSongCacheControl(t *testing.T) {
 }
 
 // A cover (any size, sent chunked) is cached by id and size: it shows with the server gone.
+// Navidrome's placeholder and errors are not.
 func TestCoverCache(t *testing.T) {
 	jpeg := bytes.Repeat([]byte("\xff\xd8jpeg"), 500)
 	webp := append([]byte("RIFF\x00\x10\x00\x00WEBPVP8L"), bytes.Repeat([]byte{7}, 500)...) // Navidrome's placeholder
@@ -263,8 +265,16 @@ func TestCoverCache(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		if r.URL.Query().Get("id") == "al-2_0" {
+		switch r.URL.Query().Get("id") {
+		case "al-2_0":
 			w.Write(webp)
+			return
+		case "al-err": // a file it cannot open: its error, with a 200
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"subsonic-response":{"status":"failed"}}`))
+			return
+		case "al-404":
+			http.NotFound(w, r)
 			return
 		}
 		w.Write(jpeg[:100])
@@ -289,6 +299,10 @@ func TestCoverCache(t *testing.T) {
 	get("id=al-1_0&size=../x")                                    // not a plain size: not cached
 	if _, b := get("id=al-2_0&size=300"); !bytes.Equal(b, webp) { // the placeholder: shown, not cached
 		t.Fatalf("placeholder: %d bytes", len(b))
+	}
+	get("id=al-err&size=300")
+	if code, _ := get("id=al-404&size=300"); code != http.StatusNotFound {
+		t.Error("404:", code)
 	}
 	for range 100 {
 		if _, err := os.Stat(filepath.Join(dir, "covers", "cover.300.al-1_0")); err == nil {
@@ -318,9 +332,18 @@ func TestCoverCache(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+	get("id=dc-4%3A1&size=300") // a disc's cover: its ":" kept as "_"
+	for range 100 {
+		if _, err := os.Stat(filepath.Join(dir, "covers", "cover.300.dc-4_1")); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	navidrome.Close()
-	if code, b := get("id=al-1_0&size=300"); code != http.StatusOK || !bytes.Equal(b, jpeg) {
-		t.Fatalf("from the cache: %d, %d bytes", code, len(b))
+	for _, q := range []string{"id=al-1_0&size=300", "id=dc-4%3A1&size=300"} {
+		if code, b := get(q); code != http.StatusOK || !bytes.Equal(b, jpeg) {
+			t.Fatalf("%s from the cache: %d, %d bytes", q, code, len(b))
+		}
 	}
 }
 
@@ -394,7 +417,8 @@ func quick(t *testing.T, giveUp time.Duration) {
 // turn ("half": the headers and half the song, then the connection drops; "drop": it
 // drops at once; "silent": half, then nothing; "missing": a 404; "shortrange": 10 bytes
 // from the Range asked; "short": the song but its last byte; "norange": the whole song,
-// Range or not; "chunked": the whole song, size unknown), then the song as asked.
+// Range or not; "slow": the same, slowly; "chunked": the whole song, size unknown), then
+// the song as asked.
 func flaky(song []byte, turns ...string) *httptest.Server {
 	var mu sync.Mutex
 	return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -431,6 +455,12 @@ func flaky(song []byte, turns ...string) *httptest.Server {
 			panic(http.ErrAbortHandler)
 		case "norange":
 			w.Write(song)
+		case "slow": // as norange, a tenth every 20 ms
+			for i := range 10 {
+				w.Write(song[i*len(song)/10 : (i+1)*len(song)/10])
+				w.(http.Flusher).Flush()
+				time.Sleep(20 * time.Millisecond)
+			}
 		case "chunked":
 			w.Write(song[:100])
 			w.(http.Flusher).Flush()
@@ -501,6 +531,23 @@ func TestSongTakenUpAgain(t *testing.T) {
 		t.Fatalf("%d, %d bytes of %d", code, len(body), len(song))
 	}
 	if !waitFor(filepath.Join(dir, "songs", "s1"), true) {
+		t.Fatal("not cached")
+	}
+}
+
+// Taken up again from its start (no Range), a song skipped slowly up to where it stopped
+// is not dead: each byte, skipped or not, puts the watch back.
+func TestSongTakenUpSlowly(t *testing.T) {
+	quick(t, 250*time.Millisecond) // the watch: 100 ms; a skip: 100 ms, read in 20 ms steps
+	song := bytes.Repeat([]byte("fLaC0123456789"), 20000)
+	navidrome := flaky(song, "half", "slow", "slow", "slow", "slow")
+	defer navidrome.Close()
+	dir := t.TempDir()
+	stream := listen(t, navidrome, dir)
+	if code, body := fetchSong(t, stream("s1"), ""); code != http.StatusOK || !bytes.Equal(body, song) {
+		t.Fatalf("%d, %d bytes of %d", code, len(body), len(song))
+	}
+	if !waitFor(filepath.Join(dir, "songs", "s1"), true) { // and the download done with its folder
 		t.Fatal("not cached")
 	}
 }
@@ -616,8 +663,8 @@ func TestSongAhead(t *testing.T) {
 	dir := t.TempDir()
 	stream := listen(t, navidrome, dir)
 	songs := filepath.Join(dir, "songs")
-	ahead := func(id string) {
-		res, err := http.Get(strings.Replace(stream(id), "/?u=", "/ahead?u=", 1))
+	ahead := func(id, after string) {
+		res, err := http.Get(strings.Replace(stream(id), "/?u=", "/ahead?after="+after+"&u=", 1))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -627,12 +674,12 @@ func TestSongAhead(t *testing.T) {
 		}
 	}
 
-	ahead("s2") // nothing else: at once
+	ahead("s2", "") // nothing else: at once
 	if !waitFor(filepath.Join(songs, "s2"), true) {
 		t.Fatal("s2 not downloaded")
 	}
-	ahead("s2") // there
-	ahead("..") // not a song id
+	ahead("s2", "") // there
+	ahead("..", "") // not a song id
 
 	var wg sync.WaitGroup
 	for range 2 { // played twice at once: one download
@@ -647,8 +694,8 @@ func TestSongAhead(t *testing.T) {
 	for len(parts(dir)) == 0 {
 		time.Sleep(10 * time.Millisecond)
 	}
-	ahead("s1") // being downloaded
-	ahead("s3") // after s1
+	ahead("s1", "")   // being downloaded
+	ahead("s3", "s1") // after s1
 	time.Sleep(50 * time.Millisecond)
 	if _, err := os.Stat(filepath.Join(songs, "s3")); err == nil {
 		t.Error("s3 downloaded before s1 is there")
@@ -659,9 +706,9 @@ func TestSongAhead(t *testing.T) {
 		t.Fatal("s3 not downloaded after s1")
 	}
 
-	ahead("s4")                                                              // never comes
+	ahead("s4", "s3")                                                        // never comes
 	time.Sleep(200 * time.Millisecond)                                       // waiting to try again
-	if _, body := fetchSong(t, stream("s5"), ""); !bytes.Equal(body, song) { // s4 stops
+	if _, body := fetchSong(t, stream("s5"), ""); !bytes.Equal(body, song) { // not after s5: s4 stops
 		t.Error("s5:", len(body))
 	}
 	if !waitFor(filepath.Join(songs, "s5"), true) || !waitFor(filepath.Join(songs, "s4"), false) {
@@ -678,6 +725,71 @@ func TestSongAhead(t *testing.T) {
 	}
 	if code, _ := fetchSong(t, stream("nf"), ""); code != http.StatusNotFound {
 		t.Error("Navidrome's 404:", code)
+	}
+}
+
+// A song skipped for one on the disk stops its download: no data spent on it.
+func TestSongSkipped(t *testing.T) {
+	song := bytes.Repeat([]byte("fLaC0123456789"), 1000)
+	navidrome := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(len(song)))
+		w.Write(song[:100])
+		w.(http.Flusher).Flush()
+		<-r.Context().Done() // the rest never comes
+	}))
+	defer navidrome.Close()
+	dir := t.TempDir()
+	stream := listen(t, navidrome, dir)
+	songs := filepath.Join(dir, "songs")
+	os.WriteFile(filepath.Join(songs, "s2"), song, 0o644)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go fetchSongCtx(ctx, stream("s1"), "") // the player still reads it
+	for len(parts(dir)) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, body := fetchSong(t, stream("s2"), ""); !bytes.Equal(body, song) {
+		t.Error("s2:", len(body))
+	}
+	if !waitFor(filepath.Join(songs, "s1"), false) {
+		t.Error("s1 kept")
+	}
+	for range 100 {
+		if len(parts(dir)) == 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Error("s1 still downloading:", parts(dir))
+}
+
+// The next song asked before the player asks for the one it follows (they race) goes on.
+func TestSongAheadFirst(t *testing.T) {
+	song := bytes.Repeat([]byte("fLaC0123456789"), 1000)
+	gate := make(chan struct{})
+	navidrome := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("id") == "s7" {
+			<-gate
+		}
+		http.ServeContent(w, r, "song.flac", time.Time{}, bytes.NewReader(song))
+	}))
+	defer navidrome.Close()
+	dir := t.TempDir()
+	stream := listen(t, navidrome, dir)
+	res, err := http.Get(strings.Replace(stream("s7"), "/?u=", "/ahead?after=s6&u=", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	for len(parts(dir)) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, body := fetchSong(t, stream("s6"), ""); !bytes.Equal(body, song) {
+		t.Error("s6:", len(body))
+	}
+	close(gate)
+	if !waitFor(filepath.Join(dir, "songs", "s7"), true) || !waitFor(filepath.Join(dir, "songs", "s6"), true) {
+		t.Error("s7 stopped by the song it follows")
 	}
 }
 
@@ -794,5 +906,16 @@ func TestNetworkAsked(t *testing.T) {
 	res.Body.Close()
 	if string(b) != `{"metered":true}` {
 		t.Error(string(b))
+	}
+}
+
+// A Subsonic URL's token stays out of the log; other errors pass as they are.
+func TestNoURL(t *testing.T) {
+	_, err := http.Get("http://127.0.0.1:1/rest/stream?t=secret")
+	if e := noURL(err); e == nil || strings.Contains(e.Error(), "secret") {
+		t.Error("url error:", e)
+	}
+	if plain := errors.New("plain"); noURL(plain) != plain {
+		t.Error("plain error changed")
 	}
 }

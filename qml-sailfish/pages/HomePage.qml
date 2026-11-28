@@ -43,8 +43,18 @@ Page {
     Connections {
         target: R.Player
 
+        // Scrobbles change Recent albums and Most played: refresh after a song starts, as
+        // the desktop's Home.
+        function onIndexChanged() { refresh.restart() }
         // A song liked or unliked: the Favorites count.
         function onLiked() { R.Api.starredSongs(function (l) { page.counts = Object.assign({}, page.counts, { FavoritesPage: l.length }) }) }
+    }
+
+    Timer {
+        id: refresh
+
+        interval: 4000
+        onTriggered: page.load()
     }
 
     SilicaFlickable {
@@ -56,18 +66,19 @@ Page {
             MenuItem {
                 //% "Settings"
                 text: qsTrId("ryugin-me-settings")
-                onClicked: pageStack.animatorPush(Qt.resolvedUrl("SettingsPage.qml"))
+                onClicked: R.Nav.open("SettingsPage")
             }
             MenuItem {
                 //% "Search"
                 text: qsTrId("ryugin-me-search")
-                onClicked: pageStack.animatorPush(Qt.resolvedUrl("SearchPage.qml"))
+                onClicked: R.Nav.open("SearchPage")
             }
         }
 
         Column {
             id: column
 
+            visible: R.Api.configured // none: the placeholder alone
             width: parent.width
 
             PageHeader {
@@ -92,11 +103,11 @@ Page {
                       hint: qsTrId("ryugin-de-n_random_songs", 500),
                       icon: "image://theme/icon-m-media-radio",
                       run: function () { R.Api.randomSongs(500, function (l) { R.Player.play(l, 0) }) } },
-                    //% "Favorites"
-                    { name: qsTrId("ryugin-la-favorites"),
-                      //% "Your favourites"
-                      hint: qsTrId("ryugin-de-your_favourites"),
-                      icon: R.Icons.silica("heart", Theme.iconSizeMedium, Theme.primaryColor),
+                    //% "Heartbeat"
+                    { name: qsTrId("ryugin-la-heartbeat"),
+                      //% "Your favorites, at random"
+                      hint: qsTrId("ryugin-de-favorites_at_random"),
+                      icon: R.Icons.silica("heartbeat", Theme.iconSizeMedium, Theme.primaryColor),
                       run: function () { R.Api.starredSongs(function (l) { R.Player.playMixed(l) }) } },
                     //% "Karaoke"
                     { name: qsTrId("ryugin-la-karaoke"),
@@ -159,13 +170,13 @@ Page {
             Repeater {
                 model: [
                     //% "Albums"
-                    { name: qsTrId("ryugin-la-albums"), icon: "image://theme/icon-m-media-albums", page: "AlbumsPage.qml" },
+                    { name: qsTrId("ryugin-la-albums"), icon: "image://theme/icon-m-media-albums", page: "AlbumsPage" },
                     //% "Artists"
-                    { name: qsTrId("ryugin-la-artists"), icon: "image://theme/icon-m-media-artists", page: "ArtistsPage.qml" },
+                    { name: qsTrId("ryugin-la-artists"), icon: "image://theme/icon-m-media-artists", page: "ArtistsPage" },
                     //% "Playlists"
-                    { name: qsTrId("ryugin-la-playlists"), icon: "image://theme/icon-m-media-playlists", page: "PlaylistsPage.qml" },
+                    { name: qsTrId("ryugin-la-playlists"), icon: "image://theme/icon-m-media-playlists", page: "PlaylistsPage" },
                     //% "Favorites"
-                    { name: qsTrId("ryugin-la-favorites"), icon: R.Icons.silica("heart", Theme.iconSizeMedium, Theme.primaryColor), page: "FavoritesPage.qml" }
+                    { name: qsTrId("ryugin-la-favorites"), icon: R.Icons.silica("heart", Theme.iconSizeMedium, Theme.primaryColor), page: "FavoritesPage" }
                 ]
 
                 delegate: BackgroundItem {
@@ -174,7 +185,7 @@ Page {
                     width: column.width
                     height: Theme.itemSizeSmall
                     enabled: R.Api.configured
-                    onClicked: pageStack.animatorPush(Qt.resolvedUrl(modelData.page))
+                    onClicked: R.Nav.open(modelData.page)
 
                     Icon {
                         id: icon
@@ -209,7 +220,7 @@ Page {
                         }
                         font.pixelSize: Theme.fontSizeSmall
                         color: section.highlighted ? palette.secondaryHighlightColor : palette.secondaryColor
-                        text: page.counts[modelData.page.replace(".qml", "")] || ""
+                        text: page.counts[modelData.page] || ""
                     }
                 }
             }

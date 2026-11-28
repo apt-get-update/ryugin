@@ -3,21 +3,13 @@ import Sailfish.Silica 1.0
 import "../../qml" as R
 
 // The Navidrome server: its address, the user and the password (only a token is kept).
-// Accept connects; a failure keeps the dialog open with the error.
+// Accept connects; a failure shows on Settings' Server row (the dialog is gone by then).
 Dialog {
     id: dialog
 
-    property string error
-
     canAccept: url.text !== "" && user.text !== "" && pass.text !== ""
-    acceptDestinationAction: PageStackAction.Pop
 
-    onAccepted: R.Api.login(url.text, user.text, pass.text, function (err) {
-        if (err) {
-            pageStack.push(dialog, {}, PageStackAction.Immediate)
-            dialog.error = R.Api.error
-        }
-    })
+    onAccepted: R.Api.login(url.text, user.text, pass.text, function () {})
 
     SilicaFlickable {
         anchors.fill: parent
@@ -62,15 +54,6 @@ Dialog {
                 width: parent.width
                 EnterKey.iconSource: "image://theme/icon-m-enter-accept"
                 EnterKey.onClicked: dialog.accept()
-            }
-            Label {
-                visible: dialog.error !== ""
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                wrapMode: Text.Wrap
-                color: Theme.errorColor
-                //% "Could not connect"
-                text: qsTrId("ryugin-la-could_not_connect") + "\n" + dialog.error
             }
         }
     }

@@ -27,7 +27,7 @@ Page {
     }
     Shelf { width: parent.width; title: /*% "Albums" */ qsTrId("ryugin-he-albums"); albums: page.result.albums }
     SectionTitle { title: /*% "Songs" */ qsTrId("ryugin-he-songs"); visible: page.result.songs.length > 0 }
-    TrackList { width: parent.width; tracks: page.result.songs; showNumber: false }
+    TrackList { width: parent.width; view: page; tracks: page.result.songs; showNumber: false }
     Text {
         visible: page.query !== "" && page.result.artists.length + page.result.albums.length + page.result.songs.length === 0
         text: /*% "Nothing found." */ qsTrId("ryugin-la-nothing_found")

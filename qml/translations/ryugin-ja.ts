@@ -299,7 +299,6 @@
     </message>
     <message id="ryugin-de-keep_songs_disk">
         <source>Songs played play again from disk, also offline</source>
-        <oldsource>Songs played to the end play again from disk, also offline</oldsource>
         <translation>聴いた曲はディスクから再生され、オフラインでも聴けます</translation>
     </message>
     <message id="ryugin-la-covers">
@@ -402,9 +401,9 @@
         <source>Favorites</source>
         <translation>お気に入り</translation>
     </message>
-    <message id="ryugin-de-your_favourites">
-        <source>Your favourites</source>
-        <translation>いいねした曲</translation>
+    <message id="ryugin-de-favorites_at_random">
+        <source>Your favorites, at random</source>
+        <translation>お気に入りをランダムで</translation>
     </message>
     <message id="ryugin-la-karaoke">
         <source>Karaoke</source>
@@ -504,12 +503,11 @@
     </message>
     <message id="ryugin-de-keep_songs">
         <source>Songs played stay on the phone, also for offline use</source>
-        <oldsource>Songs played to the end stay on the phone, also for offline use</oldsource>
         <translation>聴いた曲は端末に残り、オフラインでも聴けます</translation>
     </message>
     <message id="ryugin-la-cache_limit">
-        <source>Songs, at most</source>
-        <translation>最大サイズ</translation>
+        <source>Cache size</source>
+        <translation>キャッシュサイズ</translation>
     </message>
     <message id="ryugin-la-songs">
         <source>Songs</source>
@@ -558,10 +556,6 @@
     <message id="ryugin-me-shuffle">
         <source>Shuffle on / off</source>
         <translation>シャッフル オン/オフ</translation>
-    </message>
-    <message id="ryugin-me-karaoke">
-        <source>Karaoke on / off</source>
-        <translation>カラオケ オン/オフ</translation>
     </message>
     <message id="ryugin-me-view">
         <source>View</source>
@@ -642,6 +636,56 @@
     <message id="ryugin-de-hidden_albums">
         <source>Left out of Home, the lists, the radio and karaoke (1 star on Navidrome)</source>
         <translation>ホーム、リスト、ラジオ、カラオケに出ません（Navidromeで星1つ）</translation>
+    </message>
+    <message id="ryugin-la-mobile_data">
+        <source>Use mobile data</source>
+        <translation>モバイルデータ通信を使用</translation>
+    </message>
+    <message id="ryugin-de-mobile_data">
+        <source>Also on mobile data: look for synced lyrics in the library, and download the next song</source>
+        <translation>モバイルデータ通信でも、ライブラリの同期歌詞を探し、次の曲をダウンロードします</translation>
+    </message>
+    <message id="ryugin-la-n_lyrics_left" numerus="yes">
+        <source>Lyrics: %n songs left to check</source>
+        <translation>
+            <numerusform>歌詞：残り%n曲を確認中</numerusform>
+        </translation>
+    </message>
+    <message id="ryugin-la-waiting_wlan">
+        <source>Lyrics: waiting for WLAN</source>
+        <translation>歌詞：Wi-Fiを待っています</translation>
+    </message>
+    <message id="ryugin-me-lyrics">
+        <source>Lyrics</source>
+        <translation>歌詞</translation>
+    </message>
+    <message id="ryugin-la-disc_n">
+        <source>Disc %1</source>
+        <translation>ディスク %1</translation>
+    </message>
+    <message id="ryugin-la-no_albums">
+        <source>No albums</source>
+        <translation>アルバムがありません</translation>
+    </message>
+    <message id="ryugin-la-no_artists">
+        <source>No artists</source>
+        <translation>アーティストがありません</translation>
+    </message>
+    <message id="ryugin-ph-search_albums">
+        <source>Search albums</source>
+        <translation>アルバムを検索</translation>
+    </message>
+    <message id="ryugin-la-no_results">
+        <source>No results</source>
+        <translation>見つかりません</translation>
+    </message>
+    <message id="ryugin-la-heartbeat">
+        <source>Heartbeat</source>
+        <translation>ときめき</translation>
+    </message>
+    <message id="ryugin-la-clearing">
+        <source>Clearing</source>
+        <translation>消去中</translation>
     </message>
 </context>
 </TS>

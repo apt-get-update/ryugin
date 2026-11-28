@@ -2,17 +2,29 @@ pragma Singleton
 import QtQuick
 import QtCore
 
-// Navigation requests from any page; Main.qml acts on them.
+// Navigation requests from any page; Main.qml acts on them (Sailfish OS: ryugin.qml).
 QtObject {
+    // Sailfish OS: a page of qml-sailfish/pages by name (a signal takes all its arguments,
+    // so props is optional here).
+    signal openPage(string page, var props)
+    function open(page, props) { openPage(page, props || {}); }
     signal openAlbum(string id)
     signal openArtist(string id, string name)
     signal openPlaylist(string id, string name)
     signal home()
     signal back() // a page's back arrow
-    signal go(string key) // a sidebar page: "albums", "artists", "playlists"
     signal search(string query)
     signal focusSearch()
-    signal settings()
+    // Search asked (Ctrl+F, the rail's search): a folded sidebar opens for its field, and
+    // folds again when Escape leaves it (refold).
+    property bool refold: false
+    function openSearch() {
+        if (layout.folded) {
+            refold = true;
+            layout.folded = false;
+        }
+        Qt.callLater(focusSearch);
+    }
     property bool lyrics: false
     property bool queue: false
     // A phone (a narrow screen, e.g. Sailfish OS): tabs at the bottom, one column.

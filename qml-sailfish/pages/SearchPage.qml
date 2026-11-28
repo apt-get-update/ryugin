@@ -9,6 +9,10 @@ Page {
 
     property var result: ({ artists: [], albums: [], songs: [] })
     property string query
+    property string searched // the query result answers
+    // Two letters at least; one kanji or kana is a word already (龍).
+    readonly property bool enough: query.length > 1 || /[^\u0000-\u024f]/.test(query)
+    readonly property bool empty: result.artists.length + result.albums.length + result.songs.length === 0
 
     onQueryChanged: _wait.restart()
     // The pulley's Search: the field and the keyboard ready (Keel's field alone opens no keyboard).
@@ -24,14 +28,16 @@ Page {
 
         interval: 400
         onTriggered: {
-            if (page.query.length < 2) {
+            if (!page.enough) {
                 page.result = { artists: [], albums: [], songs: [] }
+                page.searched = ""
                 return
             }
             var q = page.query
             R.Api.search(q, function (r) {
-                if (q === page.query) {
+                if (page && q === page.query) {
                     page.result = r
+                    page.searched = q
                 }
             })
         }
@@ -89,7 +95,7 @@ Page {
 
                 delegate: BackgroundItem {
                     width: list.width
-                    onClicked: pageStack.animatorPush(Qt.resolvedUrl("ArtistPage.qml"), { artistId: modelData.id, name: modelData.name })
+                    onClicked: R.Nav.openArtist(modelData.id, modelData.name)
 
                     Label {
                         x: Theme.horizontalPageMargin
@@ -118,6 +124,16 @@ Page {
         delegate: TrackItem {
             tracks: page.result.songs
             index: model.index
+        }
+
+        PageBusyIndicator {
+            running: page.enough && page.searched !== page.query
+        }
+
+        ViewPlaceholder {
+            enabled: page.searched !== "" && page.searched === page.query && page.empty
+            //% "No results"
+            text: qsTrId("ryugin-la-no_results")
         }
 
         VerticalScrollDecorator {}

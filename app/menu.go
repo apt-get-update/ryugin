@@ -1,3 +1,5 @@
+//go:build !silica
+
 // The global menu: a menubar that is never shown. Qt exposes it over AT-SPI (with
 // QT_ACCESSIBILITY=1), so the desktop's global menu (Noctalia's appmenu) lists its items,
 // closed menus included, and clicks them.
@@ -52,9 +54,9 @@ func newMenuBar(send func(map[string]any)) *qt.QMenuBar {
 		item{ /*% "Like / unlike" */ qtTrId("ryugin-me-like_unlike"), cmd("like")},
 		item{ /*% "Repeat: off, all, one" */ qtTrId("ryugin-me-repeat"), cmd("repeat")},
 		item{ /*% "Shuffle on / off" */ qtTrId("ryugin-me-shuffle"), cmd("shuffle")},
-		item{ /*% "Karaoke on / off" */ qtTrId("ryugin-me-karaoke"), cmd("karaoke")},
 		item{},
-		item{ /*% "Roll the dice" */ qtTrId("ryugin-la-roll_the_dice"), cmd("lucky")})
+		item{ /*% "Roll the dice" */ qtTrId("ryugin-la-roll_the_dice"), cmd("lucky")},
+		item{ /*% "Karaoke" */ qtTrId("ryugin-la-karaoke"), cmd("karaoke")})
 	fill(bar.AddMenuWithTitle( /*% "View" */ qtTrId("ryugin-me-view")), send,
 		item{ /*% "Now playing" */ qtTrId("ryugin-me-now_playing"), cmd("nowPlaying")},
 		item{ /*% "Queue" */ qtTrId("ryugin-me-queue"), cmd("queue")},
@@ -70,3 +72,7 @@ func newMenuBar(send func(map[string]any)) *qt.QMenuBar {
 	bar.WinId() // creates its window, never shown: AT-SPI lists created windows only
 	return bar
 }
+
+// qtTrId is Qt's: the text for a translation id; make ts finds the calls and the English
+// in the //% comment above each.
+func qtTrId(id string) string { return qt.QCoreApplication_Translate("", id) } //nolint:revive,stylecheck // Qt's name, for lupdate

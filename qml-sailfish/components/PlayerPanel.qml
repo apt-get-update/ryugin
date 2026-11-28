@@ -4,11 +4,13 @@ import "../../qml" as R
 
 // Now playing's controls, docked at its bottom, as Jolla's Media player has them: ported
 // from Sailfish.Media's MediaPlayerControlsPanel (Qt 5 only, not in Keel). Its glow, the
-// time, the song (title and artist), previous, play, next a third each; its push-up menu (a swipe up): shuffle, repeat,
-// the heart. In the page: the song's colours come with it.
+// time, the song (title and artist), previous, play, next a third each; its push-up menu
+// (a swipe up): shuffle, repeat, the heart. In the page: the song's colours come with it.
 DockedPanel {
     id: panel
 
+    // The finger on the progress bar: the page must not swipe away under it.
+    readonly property bool seeking: progress.down
     readonly property bool _isLandscape: pageStack.currentPage !== null && pageStack.currentPage.isLandscape
 
     objectName: "playerPanel"
@@ -51,36 +53,49 @@ DockedPanel {
 
                 objectName: "playerProgress"
                 width: parent.width
-                handleVisible: false
                 minimumValue: 0
                 maximumValue: Math.max(1, R.Player.duration)
-                value: R.Player.shownPosition
-                valueText: R.Theme.time(Math.floor((down ? sliderValue : R.Player.shownPosition) / 1000))
+                valueText: R.Theme.time(Math.floor((down ? sliderValue : value) / 1000))
                 onReleased: R.Player.seek(sliderValue)
+                Component.onCompleted: value = R.Player.shownPosition
+            }
+            // Set, not bound, as the Media player does: a seek assigns the slider's value,
+            // which would end a binding and leave the bar where the finger left it.
+            Connections {
+                target: R.Player
+                function onShownPositionChanged() {
+                    if (!progress.down)
+                        progress.value = R.Player.shownPosition
+                }
             }
         }
 
-        // The song between the time and the buttons, as the Media player has it.
+        // The song between the time and the buttons, as the Media player has it
+        // (MediaPlayerDockedPanel): centred, faded at the end when longer than the panel.
         Column {
             width: parent.width
 
             Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                // Centred while it fits; longer, it starts at the left and fades at its end.
-                horizontalAlignment: implicitWidth > width ? Text.AlignLeft : Text.AlignHCenter
+                width: Math.min(parent.width - 2 * Theme.paddingMedium, implicitWidth)
+                anchors.horizontalCenter: parent.horizontalCenter
                 truncationMode: TruncationMode.Fade
+                visible: text.length > 0
                 text: R.Player.current ? R.Player.current.title : ""
             }
             Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * x
-                horizontalAlignment: implicitWidth > width ? Text.AlignLeft : Text.AlignHCenter
-                truncationMode: TruncationMode.Fade
-                font.pixelSize: Theme.fontSizeSmall
+                width: Math.min(parent.width - 2 * Theme.paddingMedium, implicitWidth)
+                anchors.horizontalCenter: parent.horizontalCenter
+                font.pixelSize: Theme.fontSizeExtraSmall
                 color: palette.secondaryColor
+                truncationMode: TruncationMode.Fade
+                visible: text.length > 0
                 text: R.Player.current ? R.Player.current.artist : ""
             }
+        }
+
+        Item {
+            width: 1
+            height: Theme.paddingMedium
         }
 
         Row {

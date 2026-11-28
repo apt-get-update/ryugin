@@ -5,9 +5,9 @@ import "../components"
 
 // The song playing, as Jolla's Media player shows one: the cover edge to edge at the top,
 // its synced lyrics under it, and the song with its controls docked at the bottom
-// (PlayerPanel: swipe them up for shuffle, repeat and the heart). The queue, and its editing, is its own
-// page. Swipe left for the lyrics; pull down for the album and the queue. In landscape the
-// cover takes the left side.
+// (PlayerPanel: swipe them up for shuffle, repeat and the heart). Swipe left for the queue
+// (its own page, attached, as SubMusic has its playlist); tap the lyrics, or pull down, for
+// them whole; pull down for the album too. In landscape the cover takes the left side.
 Page {
     id: page
 
@@ -15,12 +15,16 @@ Page {
 
     objectName: "nowPlaying"
     allowedOrientations: Orientation.All
+    // While the finger seeks on the bar, no page swipe either way, as Jolla's busy pages
+    // hold theirs.
+    backNavigation: !panel.seeking
+    forwardNavigation: !panel.seeking
 
     onStatusChanged: {
         // Once: attached again on the way back (a quick swipe left then right), it replaced
-        // the lyrics mid-animation and left both pages drawn over each other.
+        // the queue mid-animation and left both pages drawn over each other.
         if (status === PageStatus.Active && pageStack.nextPage(page) === null) {
-            pageStack.pushAttached(Qt.resolvedUrl("LyricsPage.qml"))
+            pageStack.pushAttached(Qt.resolvedUrl("QueuePage.qml"))
         }
     }
 
@@ -33,12 +37,13 @@ Page {
                 visible: page.track !== null && page.track.albumId !== ""
                 //% "Go to album"
                 text: qsTrId("ryugin-me-go_to_album")
-                onClicked: pageStack.animatorPush(Qt.resolvedUrl("AlbumPage.qml"), { albumId: page.track.albumId })
+                onClicked: R.Nav.openAlbum(page.track.albumId)
             }
             MenuItem {
-                //% "Queue"
-                text: qsTrId("ryugin-me-queue")
-                onClicked: pageStack.animatorPush(Qt.resolvedUrl("QueuePage.qml"))
+                visible: R.Player.lyrics.length > 0 // plain lyrics too, which the page does not show
+                //% "Lyrics"
+                text: qsTrId("ryugin-me-lyrics")
+                onClicked: R.Nav.open("LyricsPage")
             }
         }
 
@@ -62,8 +67,7 @@ Page {
 
         // Synced lyrics between the cover and the controls (at its right in landscape): three
         // lines in full, wrapped as long as they are, the one sung (larger, lit word by word)
-        // in the middle; the first three before the singing. A tap opens them whole (as a
-        // swipe left does).
+        // in the middle; the first three before the singing. A tap opens them whole.
         Column {
             id: lines
 
@@ -108,7 +112,7 @@ Page {
         MouseArea {
             anchors.fill: lines
             enabled: lines.visible
-            onClicked: pageStack.navigateForward()
+            onClicked: R.Nav.open("LyricsPage")
         }
     }
 

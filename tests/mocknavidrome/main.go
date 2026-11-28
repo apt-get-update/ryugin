@@ -62,6 +62,15 @@ func main() {
 	img.Set(0, 0, color.White)
 	var cover bytes.Buffer
 	png.Encode(&cover, img)
+	// A wide cover (id "wide"), red, green and blue thirds: cropped, the middle shows.
+	wide := image.NewRGBA(image.Rect(0, 0, 120, 60))
+	for x := range 120 {
+		for y := range 60 {
+			wide.Set(x, y, []color.RGBA{{255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255}}[x/40])
+		}
+	}
+	var wideCover bytes.Buffer
+	png.Encode(&wideCover, wide)
 
 	// A new scan of the library (getScanStatus's lastScan); ?running=1 starts one that
 	// has not ended yet.
@@ -90,7 +99,7 @@ func main() {
 		mu.Unlock()
 	})
 	// Go's relay, as QML sees it: the network (mobile data after GET /meter?on=1), and
-	// the next song to download (logged as "ahead?<song URL>").
+	// the next song to download (logged as "ahead?<song URL> after=<song id>").
 	http.HandleFunc("/meter", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		paid = r.URL.Query().Get("on") != ""
@@ -103,7 +112,7 @@ func main() {
 	})
 	http.HandleFunc("/ahead", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
-		calls = append(calls, "ahead?"+r.URL.Query().Get("u"))
+		calls = append(calls, "ahead?"+r.URL.Query().Get("u")+" after="+r.URL.Query().Get("after"))
 		mu.Unlock()
 		w.WriteHeader(http.StatusAccepted)
 	})
@@ -130,6 +139,12 @@ func main() {
 			json.NewEncoder(w).Encode([]any{
 				map[string]any{"duration": 300, "syncedLyrics": "[00:01.00] too long"},
 				map[string]any{"duration": 248, "syncedLyrics": "[00:02.00] まばたき"}})
+		case strings.HasSuffix(r.URL.Path, "/search") && q.Get("track_name") == "Heroes" && q.Get("artist_name") == "":
+			json.NewEncoder(w).Encode([]any{ // the length agrees, the artists do not
+				map[string]any{"duration": 200, "artistName": "David Bowie", "syncedLyrics": "[00:01.00] we can be heroes"},
+				map[string]any{"duration": 200, "artistName": "Masayoshi Soken & Susan Calloway", "syncedLyrics": "[00:01.00] heroes of light"}})
+		case strings.HasSuffix(r.URL.Path, "/search") && q.Get("track_name") == "Kawa" && q.Get("artist_name") == "":
+			json.NewEncoder(w).Encode([]any{map[string]any{"duration": 180, "artistName": "吉村弘", "syncedLyrics": "[00:01.00] かわ"}})
 		case strings.HasSuffix(r.URL.Path, "/search") && q.Get("track_name") == "Rain":
 			json.NewEncoder(w).Encode([]any{map[string]any{"plainLyrics": "only plain"}, hit})
 		case strings.HasSuffix(r.URL.Path, "/search") && q.Get("track_name") == "Hail": // another version only
@@ -173,6 +188,10 @@ func main() {
 				return
 			}
 			w.Header().Set("Content-Type", "image/png")
+			if q.Get("id") == "wide" {
+				w.Write(wideCover.Bytes())
+				return
+			}
 			w.Write(cover.Bytes())
 		case "stream":
 			http.NotFound(w, r)

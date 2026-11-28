@@ -11,6 +11,8 @@ Page {
 
     function load() {
         R.Api.playlists(function (list) {
+            if (!page)
+                return // gone before Navidrome answered
             page.playlists = list
             page.loaded = true
         })
@@ -38,15 +40,21 @@ Page {
             id: item
 
             contentHeight: Theme.itemSizeMedium
-            onClicked: pageStack.animatorPush(Qt.resolvedUrl("PlaylistPage.qml"), { playlistId: modelData.id, name: modelData.name })
+            onClicked: R.Nav.openPlaylist(modelData.id, modelData.name)
 
-            menu: ContextMenu {
-                MenuItem {
-                    //% "Delete"
-                    text: qsTrId("ryugin-me-delete")
-                    onClicked: {
-                        var id = modelData.id
-                        item.remorseDelete(function () { R.Api.deletePlaylist(id) })
+            menu: Component {
+                ContextMenu {
+                    MenuItem {
+                        text: qsTrId("ryugin-me-play")
+                        onClicked: R.Api.getPlaylist(modelData.id, function (list) { R.Player.play(list, 0) })
+                    }
+                    MenuItem {
+                        //% "Delete"
+                        text: qsTrId("ryugin-me-delete")
+                        onClicked: {
+                            var id = modelData.id
+                            item.remorseDelete(function () { R.Api.deletePlaylist(id) })
+                        }
                     }
                 }
             }
@@ -98,9 +106,7 @@ Page {
             text: qsTrId("ryugin-la-no_playlists")
         }
 
-        BusyIndicator {
-            anchors.centerIn: parent
-            size: BusyIndicatorSize.Large
+        PageBusyIndicator {
             running: !page.loaded
         }
 

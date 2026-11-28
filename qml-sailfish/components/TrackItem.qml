@@ -14,29 +14,36 @@ ListItem {
     property bool showNumber
     readonly property var track: tracks[index]
     readonly property bool current: R.Player.current !== null && R.Player.current.id === track.id
+    // Liked: the list holds its own copy of the song, so a like is followed here (as the
+    // desktop's TrackList does).
+    property bool starred: !!track.starred
+    // The heart's colour, Silica's (inside the Loader, "item" is the Loader's own item).
+    readonly property color heartColor: palette.highlightColor
 
     contentHeight: Theme.itemSizeMedium
     onClicked: R.Player.play(tracks, index)
 
-    menu: ContextMenu {
-        MenuItem {
-            //% "Add to queue"
-            text: qsTrId("ryugin-me-add_to_queue")
-            onClicked: R.Player.enqueue([item.track])
-        }
-        MenuItem {
-            text: item.track.starred
-                  //% "Unlike"
-                  ? qsTrId("ryugin-me-unlike")
-                  //% "Like"
-                  : qsTrId("ryugin-me-like")
-            onClicked: R.Player.setStarred(item.track.id, !item.track.starred)
-        }
-        MenuItem {
-            visible: item.track.albumId !== ""
-            //% "Go to album"
-            text: qsTrId("ryugin-me-go_to_album")
-            onClicked: pageStack.animatorPush(Qt.resolvedUrl("../pages/AlbumPage.qml"), { albumId: item.track.albumId })
+    menu: Component {
+        ContextMenu {
+            MenuItem {
+                //% "Add to queue"
+                text: qsTrId("ryugin-me-add_to_queue")
+                onClicked: R.Player.enqueue([item.track])
+            }
+            MenuItem {
+                text: item.starred
+                      //% "Unlike"
+                      ? qsTrId("ryugin-me-unlike")
+                      //% "Like"
+                      : qsTrId("ryugin-me-like")
+                onClicked: R.Player.setStarred(item.track.id, !item.starred)
+            }
+            MenuItem {
+                visible: item.track.albumId !== "" && !item.showNumber // numbered: on the album already
+                //% "Go to album"
+                text: qsTrId("ryugin-me-go_to_album")
+                onClicked: R.Nav.openAlbum(item.track.albumId)
+            }
         }
     }
 
@@ -110,18 +117,33 @@ ListItem {
         }
         spacing: Theme.paddingSmall
 
-        Icon {
-            visible: item.track.starred
+        Loader { // a liked song's heart, made for it only
+            visible: active
+            active: item.starred
             anchors.verticalCenter: parent.verticalCenter
-            width: Theme.iconSizeExtraSmall
-            height: width
-            source: R.Icons.silica("heart-fill", Theme.iconSizeExtraSmall, palette.highlightColor) // a heart, as on the desktop
-            color: palette.highlightColor
+            sourceComponent: Item {
+                width: Theme.iconSizeExtraSmall
+                height: width
+
+                // Drawn once in white, tinted on the GPU (icon.frag): the song's colour fading
+                // in redraws no SVG. Silica's inset: the shape in 24/29 of the box.
+                R.Icon {
+                    anchors.centerIn: parent
+                    name: "heart-fill"
+                    size: Math.round(parent.width * 24 / 29)
+                    color: heartColor
+                }
+            }
         }
         Label {
             font.pixelSize: Theme.fontSizeExtraSmall
             color: palette.secondaryColor
             text: R.Theme.time(item.track.duration)
         }
+    }
+
+    Connections {
+        target: R.Player
+        function onLiked(songId, on) { if (songId === item.track.id) item.starred = on }
     }
 }

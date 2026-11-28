@@ -15,7 +15,7 @@ Page {
         anchors.fill: parent
         running: page.status === PageStatus.Active
 
-        // Named as Sailfish's pages are (it opens from Now playing's title too), the song under.
+        // Named as Sailfish's pages are (it opens from Now playing's lyrics and pulley), the song under.
         header: PageHeader {
             //% "Lyrics"
             title: qsTrId("ryugin-he-lyrics")

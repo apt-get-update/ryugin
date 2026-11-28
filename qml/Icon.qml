@@ -9,11 +9,10 @@ Item {
     property color color: Theme.dim
     property int size: 20
     readonly property int px: Math.round(size * (Screen.devicePixelRatio || 1))
-    readonly property Image image: themed.status === Image.Ready ? themed : img
+    readonly property Image image: themed.status === Image.Ready ? themed : img // the one drawn
     width: size
     height: size
-    // Keep the old picture while a new one loads: no blink (Qt 6.8+; older Qt, as on
-    // Sailfish OS, just skips it).
+    // Keep the old picture while a new one loads: no blink (Qt 6.8+; Qt 6.7 skips it).
     Binding { target: img; property: "retainWhileLoading"; value: true; when: "retainWhileLoading" in img }
     // The theme's icon (its shape: icon.frag colours it); not in the theme: Lucide's, in white.
     // Go drew it from the theme's SVG at each size, 10 to 64 px: the picture of exactly
@@ -34,7 +33,7 @@ Item {
     }
     ShaderEffect {
         anchors.fill: parent
-        property var source: themed.status === Image.Ready ? themed : img
+        property var source: icon.image
         property color tint: icon.color
         fragmentShader: "icon.frag.qsb"
     }

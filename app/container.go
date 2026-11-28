@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -44,7 +45,7 @@ type peer struct {
 
 // serveContainer listens on a socket in dir and returns its D-Bus address.
 func serveContainer(dir string) (*container, string, error) {
-	path := filepath.Join(dir, fmt.Sprintf("ryugin-keyboard-%d", os.Getpid()))
+	path := filepath.Join(dir, "ryugin-keyboard") // one copy runs: the last run's file goes
 	_ = os.Remove(path)
 	l, err := net.Listen("unix", path)
 	if err != nil {
@@ -104,6 +105,7 @@ func (c *container) set(angle int32, active bool) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.peers = slices.DeleteFunc(c.peers, func(p peer) bool { return !p.conn.Connected() }) // a plugin reconnected
 	for _, p := range c.peers {
 		if angle != c.angle {
 			p.props.SetMust(containerIface, "orientation", angle)

@@ -17,6 +17,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
+	"github.com/mappu/miqt/qt6/qml"
 )
 
 func main() {
@@ -133,8 +134,11 @@ func inherit(themes []string, dir string) []string {
 
 // drawIcon draws an SVG at each size as base@<px>.png, but those drawn since it changed.
 func drawIcon(svg, base string) {
+	changed, err := os.Stat(svg)
+	if err != nil {
+		return // a broken link: nothing to draw
+	}
 	icon := qt.NewQIcon4(svg)
-	changed, _ := os.Stat(svg)
 	for px := iconMin; px <= iconMax; px++ {
 		png := fmt.Sprintf("%s@%d.png", base, px)
 		if done, err := os.Stat(png); err == nil && done.ModTime().After(changed.ModTime()) {
@@ -223,4 +227,17 @@ func readIni(path string) map[string]map[string]string {
 		}
 	}
 	return out
+}
+
+// loadQML loads dir/Main.qml with goBridge and goStreamProxy set, and returns its window
+// and the bridge.
+func loadQML(dir string) (*qt.QObject, *qt.QObject) {
+	engine := qml.NewQQmlApplicationEngine()
+	bridge := setContext(engine.RootContext())
+	engine.LoadWithFilePath(filepath.Join(dir, "Main.qml"))
+	roots := engine.RootObjects()
+	if len(roots) == 0 {
+		log.Fatal("QML failed to load (set RYUGIN_QML to the qml folder)")
+	}
+	return roots[0], bridge
 }

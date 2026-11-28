@@ -66,7 +66,9 @@ Page {
     }
     TrackList {
         width: parent.width
+        view: page
         tracks: page.tracks
+        album: page.album
         showArtist: page.tracks.some(function (t) { return page.album && t.artist !== page.album.artist; })
     }
 }

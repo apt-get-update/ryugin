@@ -28,22 +28,10 @@ ApplicationWindow {
         }
     }
 
-    // Sailfish OS log (~/.cache/dragon/ryugin/ryugin/ryugin.log): what the window does when minimized
-    // and back (a blank window then showed only the home screen's wallpaper).
+    // The log: what the window does when minimized and back (a blank window once showed
+    // only the wallpaper).
     onVisibilityChanged: console.log("window: visibility", win.visibility)
-    onActiveChanged: {
-        console.log("window: active", win.active);
-        if (win.active)
-            Api.checkLibrary(); // back to the app: a scan may have added songs
-    }
-    // And every 10 minutes while it is shown.
-    Timer {
-        running: win.visible
-        interval: 600000
-        repeat: true
-        triggeredOnStart: true
-        onTriggered: Api.checkLibrary()
-    }
+    onActiveChanged: console.log("window: active", win.active)
 
     // Commands from Go (MPRIS, tray, global menu).
     property string goCommand: ""
@@ -57,12 +45,6 @@ ApplicationWindow {
             win.requestActivate();
         } else if (c.cmd === "quit") {
             Qt.quit();
-        } else if (c.cmd === "coverColor") {
-            if (Player.current && c.url === Api.cover(Player.current.cover, 128)) {
-                Theme.seed = c.color;
-                Theme.wash = c.wash || "";
-                Theme.flow = c.flow || "";
-            }
         } else if (["go", "nowPlaying", "queue"].indexOf(c.cmd) >= 0) {
             win.show(); // from the global menu: the window may be in the tray
             win.raise();
@@ -105,7 +87,8 @@ ApplicationWindow {
         { key: "settings", label: /*% "Settings" */ qsTrId("ryugin-he-settings"), icon: "settings", url: "SettingsPage.qml", bottom: true }
     ]
     property string section: "home"
-    readonly property bool settingsOpen: settingsPopup.opened || settingsWindow.visible
+    readonly property bool settingsOpen: settingsPopup.opened || (settingsDialog !== null && settingsDialog.visible)
+    property Window settingsDialog: null // settingsWindow's, while open
 
     // History, so the top bar can go back and forward.
     property var history: []
@@ -115,18 +98,19 @@ ApplicationWindow {
         if (key === "settings") { // a dialog (a phone: a popup over the page); the gear opens and closes it
             if (settingsOpen) {
                 settingsPopup.close();
-                settingsWindow.close();
+                if (settingsDialog) settingsDialog.close();
             } else if (Nav.phone) {
                 settingsPopup.open();
             } else {
-                settingsWindow.show();
-                settingsWindow.raise();
-                settingsWindow.requestActivate();
+                settingsWindow.active = true;
+                settingsDialog.show();
+                settingsDialog.raise();
+                settingsDialog.requestActivate();
             }
             return;
         }
         settingsPopup.close();
-        settingsWindow.close();
+        if (settingsDialog) settingsDialog.close();
         Nav.lyrics = false;
         // Its own page again: no rebuild (it blinked). From an album opened there, back to
         // the list as it was; on the list itself, up to the top.
@@ -189,8 +173,6 @@ ApplicationWindow {
         function onOpenPlaylist(id, name) { win.open("PlaylistPage.qml", { playlistId: id, name: name }); }
         function onHome() { win.go("home"); }
         function onBack() { win.back(); }
-        function onGo(key) { win.go(key); }
-        function onSettings() { win.go("settings"); }
         function onSearch(query) {
             if (query === "") { // cleared: back to what was there before the search
                 if (stack.currentItem && stack.currentItem.objectName === "search")
@@ -213,7 +195,7 @@ ApplicationWindow {
     Shortcut { sequence: "Escape"; onActivated: Nav.lyrics ? Nav.lyrics = false : (Nav.queue ? Nav.queue = false : win.back()) }
     Shortcut { sequences: [StandardKey.Back]; onActivated: win.back() }
     Shortcut { sequence: "F9"; onActivated: Nav.layout.folded = !Nav.layout.folded }
-    Shortcut { sequences: [StandardKey.Find]; onActivated: { Nav.layout.folded = false; Qt.callLater(Nav.focusSearch); } }
+    Shortcut { sequences: [StandardKey.Find]; onActivated: Nav.openSearch() }
     Shortcut { sequences: [StandardKey.Forward]; onActivated: if (win.ahead.length) win.forward() }
 
     // Room for a phone's notch (the Jolla Phone's camera) at the top when upright; on its
@@ -313,15 +295,20 @@ ApplicationWindow {
             z: 3
         }
 
-        // Fullscreen player: slides up over everything, the player bar included.
+        // Fullscreen player: slides up over everything, the player bar included. open (0 to
+        // 1) slides, not y: a window resized moves nothing (y followed the height, sliding).
+        // Closed by a pull, it slides on from where the finger left it.
         NowPlaying {
             id: nowPlaying
+            objectName: "nowPlaying"
+            property real open: Nav.lyrics ? 1 : 0
             topInset: win.topInset
             width: parent.width
             height: parent.height
-            y: (Nav.lyrics ? 0 : parent.height) + pull
-            visible: y < parent.height
-            Behavior on y { enabled: !nowPlaying.pulling; NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
+            y: (1 - open) * parent.height + pull * open
+            visible: open > 0
+            Behavior on open { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
+            onOpenChanged: if (open === 0) pull = 0
             z: 6
         }
 
@@ -371,7 +358,8 @@ ApplicationWindow {
     }
 
     // Navidrome (SettingsPage) as a popup: the gear, a click outside or Escape closes it;
-    // it stays until a server is set.
+    // it stays until a server is set. Its page is made while it shows (34 MB with the
+    // window's, made at the start for nothing).
     Popup {
         id: settingsPopup
         objectName: "settingsPopup"
@@ -381,26 +369,37 @@ ApplicationWindow {
         padding: 0
         closePolicy: Api.configured ? Popup.CloseOnEscape | Popup.CloseOnPressOutside : Popup.NoAutoClose
         background: null
-        contentItem: SettingsPage { onCloseRequested: settingsPopup.close() }
+        contentItem: Loader {
+            active: settingsPopup.visible
+            sourceComponent: SettingsPage { onCloseRequested: settingsPopup.close() }
+        }
         Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.45) }
         enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 150 } }
         exit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 150 } }
     }
 
     // Settings, a dialog of its own (a phone: the popup above): the compositor blurs it.
-    Window {
+    // Made when it opens, gone when it closes, with its own drawing (a context, a thread).
+    Loader {
         id: settingsWindow
-        objectName: "settingsWindow"
-        transientParent: win
-        title: /*% "Ryūgin settings" */ qsTrId("ryugin-he-settings_window")
-        width: 760
-        height: 560
-        minimumWidth: 560
-        minimumHeight: 400
-        color: Theme.bg
-        palette.highlight: Theme.gold
-        palette.highlightedText: Theme.goldInk
-        palette.accent: Theme.gold
-        SettingsPage { anchors.fill: parent; onCloseRequested: settingsWindow.close() }
+        active: false
+        sourceComponent: Window {
+            id: dialog
+            objectName: "settingsWindow"
+            transientParent: win
+            title: /*% "Ryūgin settings" */ qsTrId("ryugin-he-settings_window")
+            width: 760
+            height: 560
+            minimumWidth: 560
+            minimumHeight: 400
+            color: Theme.bg
+            palette.highlight: Theme.gold
+            palette.highlightedText: Theme.goldInk
+            palette.accent: Theme.gold
+            onVisibleChanged: if (!visible) Qt.callLater(function () { settingsWindow.active = false; })
+            Component.onCompleted: win.settingsDialog = dialog
+            Component.onDestruction: win.settingsDialog = null
+            SettingsPage { anchors.fill: parent; onCloseRequested: dialog.close() }
+        }
     }
 }

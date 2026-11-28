@@ -20,7 +20,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -28,10 +27,6 @@ import (
 	"github.com/mappu/miqt/qt6/mainthread"
 	"github.com/mappu/miqt/qt6/qml"
 )
-
-// Qt's application and its loop must stay on the process's main thread: Keel's is made in
-// C (silica.cpp), where miqt does not pin the thread as for its own.
-func init() { runtime.LockOSThread() }
 
 func main() {
 	sailfishEnv()
@@ -61,7 +56,7 @@ func main() {
 	translate(filepath.Join(filepath.Dir(dir), "qml", "translations")) // qml-sailfish/ uses qml/'s
 	ctx := qml.UnsafeNewQQmlContext(C.silica_view())
 	bridge := setContext(ctx)
-	// tests/silica.sh: the page to open first, and where to save the window's picture.
+	// tests/silica.sh's RYUGIN_* switches, as context properties.
 	for name, env := range map[string]string{"goStartPage": "RYUGIN_PAGE", "goShot": "RYUGIN_SHOT", "goScroll": "RYUGIN_SCROLL", "goLandscape": "RYUGIN_LANDSCAPE", "goPerf": "RYUGIN_PERF", "goKeyboard": "RYUGIN_KEYBOARD"} {
 		if v := os.Getenv(env); v != "" {
 			ctx.SetContextProperty2(name, qt.NewQVariant14(v))

@@ -9,13 +9,6 @@ Page {
     property var used: null
     property string scanError: "" // a scan refused (not an admin)
 
-    function size(bytes) {
-        return bytes < 1 << 30
-                //% "%1 MB"
-                ? qsTrId("ryugin-la-mb").arg(Math.round(bytes / (1 << 20)))
-                //% "%1 GB"
-                : qsTrId("ryugin-la-gb").arg((bytes / (1 << 30)).toFixed(1))
-    }
     function showUsed(sizes) {
         page.used = sizes
     }
@@ -45,6 +38,8 @@ Page {
                 label: qsTrId("ryugin-la-server")
                 //% "None"
                 value: R.Api.configured ? R.Api.settings.user + " @ " + R.Api.settings.url : qsTrId("ryugin-la-none")
+                //% "Could not connect"
+                description: R.Api.error !== "" ? qsTrId("ryugin-la-could_not_connect") + ": " + R.Api.error : ""
                 onClicked: pageStack.animatorPush(Qt.resolvedUrl("LoginDialog.qml"))
             }
             ValueButton {
@@ -105,12 +100,14 @@ Page {
 
                 delegate: ListItem {
                     contentHeight: Theme.itemSizeMedium
-                    onClicked: pageStack.animatorPush(Qt.resolvedUrl("AlbumPage.qml"), { albumId: modelData.id })
-                    menu: ContextMenu {
-                        MenuItem {
-                            //% "Show album"
-                            text: qsTrId("ryugin-me-show_album")
-                            onClicked: R.Api.hide(modelData, false)
+                    onClicked: R.Nav.openAlbum(modelData.id)
+                    menu: Component {
+                        ContextMenu {
+                            MenuItem {
+                                //% "Show album"
+                                text: qsTrId("ryugin-me-show_album")
+                                onClicked: R.Api.hide(modelData, false)
+                            }
                         }
                     }
 
@@ -153,9 +150,22 @@ Page {
                     }
                 }
             }
+            TextSwitch {
+                //% "Use mobile data"
+                text: qsTrId("ryugin-la-mobile_data")
+                //% "Also on mobile data: look for synced lyrics in the library, and download the next song"
+                description: qsTrId("ryugin-de-mobile_data")
+                             + (R.Player.sweepLeft > 0
+                                //% "Lyrics: %n songs left to check"
+                                ? "\n" + qsTrId("ryugin-la-n_lyrics_left", R.Player.sweepLeft)
+                                //% "Lyrics: waiting for WLAN"
+                                : R.Player.sweepPaused ? "\n" + qsTrId("ryugin-la-waiting_wlan") : "")
+                checked: R.Player.settings.mobileData
+                onCheckedChanged: R.Player.settings.mobileData = checked
+            }
             Slider {
                 width: parent.width
-                //% "Songs, at most"
+                //% "Cache size"
                 label: qsTrId("ryugin-la-cache_limit")
                 minimumValue: 1
                 maximumValue: 20
@@ -176,13 +186,23 @@ Page {
                     { kind: "covers", label: qsTrId("ryugin-la-covers") }
                 ]
 
+                // A tap (or a long press) offers Clear, with a remorse: the songs kept for
+                // offline go.
                 delegate: ListItem {
+                    id: cached
+
                     contentHeight: Theme.itemSizeSmall
-                    menu: ContextMenu {
-                        MenuItem {
-                            //% "Clear"
-                            text: qsTrId("ryugin-me-clear")
-                            onClicked: R.Api.cache({ clear: modelData.kind }, page.showUsed)
+                    onClicked: openMenu()
+                    menu: Component {
+                        ContextMenu {
+                            MenuItem {
+                                //% "Clear"
+                                text: qsTrId("ryugin-me-clear")
+                                //% "Clearing"
+                                onClicked: cached.remorseAction(qsTrId("ryugin-la-clearing"), function () {
+                                    R.Api.cache({ clear: modelData.kind }, page.showUsed)
+                                })
+                            }
                         }
                     }
 
@@ -198,7 +218,7 @@ Page {
                             verticalCenter: parent.verticalCenter
                         }
                         color: palette.secondaryColor
-                        text: page.used ? page.size(page.used[modelData.kind]) : ""
+                        text: page.used ? R.Theme.size(page.used[modelData.kind]) : ""
                     }
                 }
             }

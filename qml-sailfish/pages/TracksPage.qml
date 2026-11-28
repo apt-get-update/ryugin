@@ -53,9 +53,7 @@ Page {
             text: page.empty
         }
 
-        BusyIndicator {
-            anchors.centerIn: parent
-            size: BusyIndicatorSize.Large
+        PageBusyIndicator {
             running: !page.loaded
         }
 

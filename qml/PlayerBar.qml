@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 
-// Bottom bar, as in SPlayer-Next: controls left, the track in the middle with its
-// progress, then time, volume and queue (a phone). Click the cover for Now Playing.
+// Bottom bar: the song left (its cover the way to Now Playing, by click or wheel),
+// the controls in the middle, time and volume right; the progress runs under them all.
 Rectangle {
     id: bar
     height: Nav.phone ? 64 : 80
@@ -11,12 +11,16 @@ Rectangle {
 
     Rectangle { width: parent.width; height: 1; color: Theme.border }
 
+    // The row above the progress.
+    Item { id: line; width: parent.width; height: parent.height - 14 }
+
     Row {
         id: controls
-        x: 18
+        objectName: "controls"
         visible: !Nav.phone // a phone keeps play and next, on the right
-        width: visible ? implicitWidth : 0
-        anchors.verticalCenter: parent.verticalCenter
+        // In the middle, unless the window is too narrow for it.
+        x: Math.min((parent.width - width) / 2, tools.x - 22 - width)
+        anchors.verticalCenter: line.verticalCenter
         spacing: 6
         IconButton { objectName: "shuffle"; icon: Player.settings.shuffle ? "shuffle" : "play-order"; active: Player.settings.shuffle; iconSize: 17; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.toggleShuffle() }
         IconButton { icon: "skip-back"; iconSize: 19; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.previous() }
@@ -44,16 +48,22 @@ Rectangle {
 
     Item {
         id: middle
-        anchors.left: controls.right
-        anchors.leftMargin: Nav.phone ? 0 : 22
-        anchors.right: tools.left
-        anchors.rightMargin: 22
-        height: parent.height
+        objectName: "song"
+        x: 18
+        width: (Nav.phone ? tools.x : controls.x) - 22 - x
+        height: line.height
+
+        // The wheel over the song: up opens Now Playing, down closes it.
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.NoButton
+            onWheel: function (e) { if (e.angleDelta.y !== 0 && bar.t) Nav.lyrics = e.angleDelta.y > 0; }
+        }
 
         Cover {
             id: art
-            width: 46
-            height: 46
+            width: Nav.phone ? 40 : 46
+            height: width
             size: 120
             radius: 8
             anchors.verticalCenter: parent.verticalCenter
@@ -73,7 +83,6 @@ Rectangle {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: Nav.lyrics = !Nav.lyrics
-                onWheel: function (e) { if (e.angleDelta.y > 0) Nav.lyrics = true; }
                 ToolTip.visible: containsMouse && !!bar.t
                 ToolTip.text: /*% "Now playing (Ctrl+L)" */ qsTrId("ryugin-la-now_playing_ctrl_l")
                 ToolTip.delay: 500
@@ -99,24 +108,28 @@ Rectangle {
                 elide: Text.ElideRight
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: if (bar.t) Nav.openArtist(bar.t.artistId, bar.t.artist) }
             }
-            GoldSlider {
-                id: progress
-                objectName: "progress"
-                width: parent.width
-                from: 0
-                to: Math.max(1, Player.duration)
-                // Follow the song, except while dragged; seek on release.
-                Binding on value { value: Player.shownPosition; when: !progress.pressed; restoreMode: Binding.RestoreNone }
-                onPressedChanged: if (!pressed) Player.seek(value)
-            }
         }
+    }
+
+    GoldSlider {
+        id: progress
+        objectName: "progress"
+        x: 12
+        width: parent.width - 24
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 2
+        from: 0
+        to: Math.max(1, Player.duration)
+        // Follow the song, except while dragged; seek on release.
+        Binding on value { value: Player.shownPosition; when: !progress.pressed; restoreMode: Binding.RestoreNone }
+        onPressedChanged: if (!pressed) Player.seek(value)
     }
 
     Row {
         id: tools
         anchors.right: parent.right
         anchors.rightMargin: Nav.phone ? 8 : 18
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.verticalCenter: line.verticalCenter
         spacing: 6
         IconButton { visible: Nav.phone; icon: Player.playing ? "pause" : "play"; iconSize: 22; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.toggle() }
         IconButton { visible: Nav.phone; icon: "skip-forward"; iconSize: 20; anchors.verticalCenter: parent.verticalCenter; onClicked: Player.next() }

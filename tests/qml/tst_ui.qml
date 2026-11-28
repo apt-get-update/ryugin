@@ -181,6 +181,11 @@ TestCase {
         const none = create("Cover.qml", { width: 100, height: 100 });
         wait(100);
         verify(!none.ready);
+        // A wide picture fills the square, cropped: its middle half shows (cover.frag).
+        const wide = create("Cover.qml", { width: 100, height: 100, coverId: "wide" });
+        tryCompare(wide, "ready", true, 5000);
+        const art = findChildren(wide, "").filter(function (o) { return o.crop !== undefined; })[0];
+        compare(art.crop, Qt.size(0.5, 1));
     }
 
     // ---- Scrollbars: shown on the desktop when there is more, never when there is not.
@@ -229,6 +234,23 @@ TestCase {
         compare(Player.repeat, "one");
         mouseClick(repeat);
         compare(Player.repeat, "off");
+    }
+
+    // ---- Layout: the song left, the controls in the middle, the progress under all;
+    // the wheel anywhere over the song opens Now Playing and closes it.
+    function test_bar_song_left_wheel() {
+        Player.play(albumTracks(), 0);
+        const bar = create("PlayerBar.qml", { width: 1280 });
+        const song = findChild(bar, "song"), controls = findChild(bar, "controls"), progress = findChild(bar, "progress");
+        compare(song.x, 18);
+        fuzzyCompare(controls.x + controls.width / 2, 640, 1);
+        verify(song.x + song.width < controls.x, "the title stops before the controls");
+        verify(progress.width > 1200, "the progress runs the bar's width");
+        Nav.lyrics = false;
+        mouseWheel(song, song.width - 10, song.height / 2, 0, 120);
+        verify(Nav.lyrics, "wheel up over the title opens");
+        mouseWheel(song, 10, song.height / 2, 0, -120);
+        verify(!Nav.lyrics, "wheel down over the cover closes");
     }
 
     // ---- Fullscreen: lyrics only when there are some; the queue takes their place.
@@ -435,6 +457,25 @@ TestCase {
         keyClick("o");
         tryVerify(function () { return searchSpy.count >= 2; }, 2000);
         compare(searchSpy.signalArguments[searchSpy.count - 1][0], "yo");
+        keyClick(Qt.Key_Escape); // leaves the field; open, the sidebar stays
+        verify(!field.activeFocus);
+        verify(!Nav.layout.folded);
+        // Folded, Ctrl+F opens it for the search; Escape folds it again.
+        Nav.layout.folded = true;
+        try {
+            Nav.openSearch();
+            tryVerify(function () { return field.activeFocus; }, 2000);
+            verify(!Nav.layout.folded);
+            keyClick(Qt.Key_Escape);
+            verify(!field.activeFocus);
+            verify(Nav.layout.folded, "folded again");
+            Nav.openSearch(); // left by a click elsewhere: it stays open
+            tryVerify(function () { return field.activeFocus; }, 2000);
+            field.focus = false;
+            verify(!Nav.layout.folded && !Nav.refold);
+        } finally {
+            Nav.layout.folded = false;
+        }
     }
 
     // ---- The sidebar's Queue: opens and closes the queue, counts its songs; a liked song has a heart, × removes it.
@@ -450,6 +491,7 @@ TestCase {
             verify(!Nav.queue);
             const panel = create("QueuePanel.qml", { width: 360, height: 600 });
             tryVerify(function () { return findChildren(panel, "").some(function (c) { return c.name === "heart-fill" && c.visible; }); }, 2000);
+            compare(findChildren(panel, "queueRemove").length, 0, "no × until a hover");
             // Save as playlist: a name field; × or Escape cancels.
             findChild(panel, "savePlaylist").clicked();
             const name = findChild(panel, "playlistName");
@@ -469,10 +511,40 @@ TestCase {
             mouseMove(grip, 10, 50);
             mouseRelease(grip, 10, 50);
             compare(Player.queue.map(function (t) { return t.id; }).join(" "), "s1 s0", "dragged down by one");
-            findChildren(panel, "queueRemove")[0].clicked(); // × takes the song out
+            // × takes the song out; it is made on hover only (a long queue scrolls lighter).
+            const remove = function () { return findChildren(panel, "queueRemove"); };
+            mouseMove(grips()[0], 20, 10);
+            tryVerify(function () { return remove().length === 1; }, 1000, "× on the row under the pointer");
+            remove()[0].clicked();
             compare(Player.queue.length, 1);
         } finally {
             Player.queue = [];
+        }
+    }
+
+    // ---- An album hidden from its page is listed in Settings, where its eye shows it again.
+    function test_hide_album() {
+        const known = Api.known.albums;
+        try {
+            mock.calls(true);
+            const page = create("AlbumPage.qml", { albumId: "a", width: 1000, height: 800 });
+            tryVerify(function () { return page.album !== null; }, 5000);
+            const button = findChild(page, "hideAlbum");
+            compare(button.text, "Hide album");
+            button.clicked();
+            tryVerify(function () { return mock.called("setRating", "id=a&rating=1"); }, 5000);
+            compare(button.text, "Show album");
+            const settings = create("SettingsPage.qml", { width: 800, height: 900 });
+            const hidden = findChild(settings, "hiddenAlbums");
+            verify(hidden.visible);
+            const eye = findChildren(hidden, "").filter(function (c) { return c.icon === "eye"; });
+            compare(eye.length, 1);
+            eye[0].clicked();
+            tryVerify(function () { return mock.called("setRating", "id=a&rating=0"); }, 5000);
+            verify(!hidden.visible, "none hidden: no list");
+            compare(button.text, "Hide album");
+        } finally {
+            Api.known.albums = known;
         }
     }
 
@@ -557,13 +629,19 @@ TestCase {
         Api.lastScan = "";
         Api.checkLibrary(); // the mark
         tryVerify(function () { return Api.lastScan !== ""; }, 5000);
+        let scans = 0;
+        const count = function () { scans++; };
+        Api.scanned.connect(count); // the new songs' lyrics looked at (Player)
         mock.calls(true);
         Api.checkLibrary(); // the same scan
         wait(300);
         verify(!mock.called("getAlbumList2") && !mock.called("getArtists"), "no new scan, no reload");
+        compare(scans, 0);
         mock.scan();
         Api.checkLibrary();
         tryVerify(function () { return mock.called("getAlbumList2", "type=newest") && mock.called("getAlbumList2", "alphabeticalByName") && mock.called("getArtists"); }, 5000);
+        compare(scans, 1);
+        Api.scanned.disconnect(count);
         verify(home.newest.length > 0 && albums.albums.length > 0, "the old lists stay while the new ones come");
         // A scan still running: asked again on its own until it ends, then the reload.
         mock.scan(true);
@@ -596,6 +674,30 @@ TestCase {
         w.go("home");
         tryCompare(findChild(w.contentItem, "home"), "visible", true);
         compare(findChild(w.contentItem, "home"), greeting, "back to the page as it was");
+    }
+
+    // ---- The window resized: the closed player stays out of sight (it slid in, following
+    // the height); opened, it fills the window at once.
+    function test_resize_keeps_the_player_closed() {
+        const w = createTemporaryObject(Qt.createComponent(Qt.resolvedUrl("../../qml/Main.qml")), root);
+        const np = findChild(w.contentItem, "nowPlaying");
+        verify(!np.visible);
+        let shown = false;
+        const seen = function () { shown = shown || np.visible; };
+        np.visibleChanged.connect(seen);
+        const h = w.contentItem.height;
+        w.height += 200;
+        tryVerify(function () { return w.contentItem.height > h; }, 2000);
+        wait(100);
+        np.visibleChanged.disconnect(seen);
+        verify(!shown, "closed: nothing slides in");
+        Nav.lyrics = true;
+        tryCompare(np, "y", 0);
+        w.height -= 100;
+        compare(np.y, 0, "open: still in place");
+        compare(np.height, w.contentItem.height);
+        Nav.lyrics = false;
+        tryVerify(function () { return !np.visible; }, 2000);
     }
 
     // ---- The gear opens Navidrome as a popup; a second click closes it.
@@ -758,7 +860,7 @@ TestCase {
             verify(np.pull > 0 && np.pull <= 60, "follows the finger: " + np.pull);
             mouseRelease(zone, x, y + 60);
             verify(Nav.lyrics, "a short slow pull springs back");
-            compare(np.pull, 0);
+            tryCompare(np, "pull", 0);
             mouseDrag(zone, x, y, 0, 300);
             verify(!Nav.lyrics, "a long pull closes");
             Nav.lyrics = true;

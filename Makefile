@@ -75,10 +75,12 @@ qm:
 	$(LRELEASE) -silent qml/translations/ryugin-*.ts
 	$(LRELEASE) -silent qml/translations/ryugin.ts -qm qml/translations/ryugin_eng_en.qm
 
-# GLSL for desktop GL and for GLES (phones: 100 es, as Qt's own shaders, or GLES will not
-# link ours with them), HLSL and MSL.
+# GLSL for desktop GL and for GLES (100 es, as Qt's own shaders, or GLES will not link our
+# fragment shaders with Qt's vertex one), HLSL and MSL. flow has its own vertex shader and
+# const arrays, which GLSL ES 1.00 lacks: 300 es too.
 shaders:
-	for f in qml/*.frag qml/*.vert; do $(QSB) --glsl "100es,120,150" --hlsl 50 --msl 12 -o "$$f.qsb" "$$f" || exit 1; done
+	for f in qml/*.frag qml/*.vert; do g="100es,120,150"; case $$f in qml/flow.*) g="300es,$$g";; esac; \
+		$(QSB) --glsl "$$g" --hlsl 50 --msl 12 -o "$$f.qsb" "$$f" || exit 1; done
 
 clean:
 	rm -rf $(ARCH)/src $(ARCH)/pkg $(ARCH)/ryugin .rpmbuild ryugin

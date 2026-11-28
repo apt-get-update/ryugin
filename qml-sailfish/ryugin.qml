@@ -17,24 +17,25 @@ ApplicationWindow {
     // from a picture (jolla-gallery-ambience): the hue of the cover's colour (color.go) at
     // full saturation and half value gives the highlight for the ambience's scheme, which
     // gives the rest; primary and secondary are the scheme's. On the page stack and the
-    // player: every page takes it. A new hue turns in the short way round.
-    readonly property bool _tinted: R.Theme.settings.followCover && R.Player.current !== null
-    property real _hue: R.Theme.fallback.hsvHue // unwrapped: 1.1 is 0.1
+    // player: every page takes it. The hue and its fade are the desktop's (Theme.qml): a
+    // near hue turns the short way round, a far one through grey (ink). Switched off or
+    // on, the palette blends over 800 ms (Theme.k) between the ambience's and the song's.
+    readonly property real _k: R.Player.current !== null ? R.Theme.k : 0
     readonly property var _palette: {
-        if (!_tinted) {
-            return {
-                primaryColor: Theme.primaryColor,
-                secondaryColor: Theme.secondaryColor,
-                highlightColor: Theme.highlightColor,
-                secondaryHighlightColor: Theme.secondaryHighlightColor,
-                highlightBackgroundColor: Theme.highlightBackgroundColor,
-                highlightDimmerColor: Theme.highlightDimmerColor
-            }
+        var own = {
+            primaryColor: Theme.primaryColor,
+            secondaryColor: Theme.secondaryColor,
+            highlightColor: Theme.highlightColor,
+            secondaryHighlightColor: Theme.secondaryHighlightColor,
+            highlightBackgroundColor: Theme.highlightBackgroundColor,
+            highlightDimmerColor: Theme.highlightDimmerColor
         }
+        if (_k === 0)
+            return own
         var scheme = Theme.colorScheme
         var light = scheme === Theme.DarkOnLight
-        var highlight = Theme.highlightFromColor(Qt.hsva(_hue - Math.floor(_hue), 1.0, 0.5, 1.0), scheme)
-        return {
+        var highlight = Theme.highlightFromColor(Qt.hsva(R.Theme.h, R.Theme.ink, 0.5, 1.0), scheme)
+        var song = {
             primaryColor: light ? Theme.darkPrimaryColor : Theme.lightPrimaryColor,
             secondaryColor: light ? Theme.darkSecondaryColor : Theme.lightSecondaryColor,
             highlightColor: highlight,
@@ -42,13 +43,12 @@ ApplicationWindow {
             highlightBackgroundColor: Theme.highlightBackgroundFromColor(highlight, scheme),
             highlightDimmerColor: Theme.highlightDimmerFromColor(highlight, scheme)
         }
-    }
-
-    Behavior on _hue {
-        NumberAnimation {
-            duration: 800
-            easing.type: Easing.InOutQuad
-        }
+        if (_k === 1)
+            return song
+        var out = {}
+        for (var name in own)
+            out[name] = R.Theme.mix(own[name], song[name], _k)
+        return out
     }
 
     allowedOrientations: defaultAllowedOrientations
@@ -60,17 +60,6 @@ ApplicationWindow {
             activate()
         } else if (c.cmd === "quit") {
             Qt.quit()
-        } else if (c.cmd === "coverColor") {
-            // The song's colour and its blurred cover (color.go), for the pages that follow it.
-            if (R.Player.current && c.url === R.Api.cover(R.Player.current.cover, 128)) {
-                R.Theme.seed = c.color
-                R.Theme.wash = c.wash || ""
-                var hue = R.Theme.seed.hsvHue
-                if (hue >= 0) {
-                    var d = hue - (_hue - Math.floor(_hue))
-                    _hue += d > 0.5 ? d - 1 : d < -0.5 ? d + 1 : d
-                }
-            }
         } else {
             R.Player.command(c)
         }
@@ -79,6 +68,28 @@ ApplicationWindow {
     // The keyboard's link (Go, container.go): which way the pages face, and the app in front.
     readonly property string keyboardLink: JSON.stringify({ keyboard: { angle: backdrops.angle, active: Qt.application.state === Qt.ApplicationActive } })
     onKeyboardLinkChanged: if (R.Player.bridge) R.Player.bridge.objectName = keyboardLink
+
+    // Opens a page (its name in pages/), or goes back to it when it is open already (the
+    // same album, artist, Now playing...: the first property names it): each page once in
+    // the stack, so the way home stays a few swipes, as Jolla's apps keep theirs
+    // (pageStack.find, then pop). Pages ask through R.Nav, as the desktop's do.
+    function openPage(name, props) {
+        props = props || {}
+        var key = Object.keys(props)[0]
+        var found = pageStack.find(function (page) {
+            return String(page).indexOf(name + "_QML") === 0 && (!key || page[key] === props[key])
+        })
+        if (found === null) pageStack.animatorPush(Qt.resolvedUrl("pages/" + name + ".qml"), props)
+        else if (found !== pageStack.currentPage) pageStack.pop(found)
+    }
+
+    Connections {
+        target: R.Nav
+        function onOpenPage(name, props) { app.openPage(name, props) }
+        function onOpenAlbum(id) { app.openPage("AlbumPage", { albumId: id }) }
+        function onOpenArtist(id, name) { app.openPage("ArtistPage", { artistId: id, name: name }) }
+        function onOpenPlaylist(id, name) { app.openPage("PlaylistPage", { playlistId: id, name: name }) }
+    }
 
     Component.onCompleted: {
         // Context properties from Go: unknown to qmllint.
@@ -250,10 +261,12 @@ ApplicationWindow {
         }
     }
     // tests/silica.sh, PERF=1: a page pushed and popped every 1.2 s for 20 s; the frames
-    // that took long logged ("perf:"), then a sum.
+    // that took long logged ("perf:"), then a sum. PERF=Page:fling: the page stays, its
+    // list flung down and up every 1.2 s.
     FrameAnimation {
         id: _perf
 
+        property int flung
         property int frames
         property int slow
         property real worst
@@ -274,8 +287,11 @@ ApplicationWindow {
                 console.log("perf: slow", Math.round(frameTime * 1000), "ms at +" + Math.round((elapsedTime % 1.2) * 1000), "depth", pageStack.depth)
             }
             if (Math.floor((elapsedTime - frameTime) / 1.2) !== Math.floor(elapsedTime / 1.2)) {
-                if (pageStack.depth > 1) pageStack.pop()
-                else pageStack.animatorPush(Qt.resolvedUrl("pages/" + (goPerf === "1" ? "AlbumsPage" : goPerf) + ".qml")) // qmllint disable unqualified
+                var page = goPerf.split(":")[0] // qmllint disable unqualified
+                var view = pageStack.depth > 1 && goPerf.split(":")[1] === "fling" ? _scroll.find(pageStack.currentPage) : null // qmllint disable unqualified
+                if (view) view.flick(0, (++flung % 2 ? -1 : 1) * 6000)
+                else if (pageStack.depth > 1) pageStack.pop()
+                else pageStack.animatorPush(Qt.resolvedUrl("pages/" + (page === "1" ? "AlbumsPage" : page) + ".qml"))
             }
         }
     }
@@ -288,7 +304,7 @@ ApplicationWindow {
         property int ticks
 
         function find(item) {
-            for (var i = 0; i < item.children.length; i++) {
+            for (var i = 0; item.children && i < item.children.length; i++) {
                 var c = item.children[i]
                 if (c.flick !== undefined && c.pullDownMenu !== undefined) {
                     return c

@@ -21,7 +21,7 @@ BackgroundItem {
         if (_menuWasOpen) {
             menu.close()
         } else if (opens) {
-            pageStack.animatorPush(Qt.resolvedUrl("../pages/AlbumPage.qml"), { albumId: album.id })
+            R.Nav.openAlbum(album.id)
         } else {
             tapped()
         }
@@ -40,7 +40,7 @@ BackgroundItem {
         }
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
-        source: R.Api.cover(tile.album.cover, 360)
+        source: R.Api.cover(tile.album.cover, R.Api.albumCover) // the size Go fetched ahead
     }
 
     Column {

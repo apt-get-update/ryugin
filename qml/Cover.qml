@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Effects
 
 // Album art from Navidrome with rounded corners and a quiet placeholder.
 Item {
@@ -13,38 +12,28 @@ Item {
     // A picture the server failed to resize (an error or an empty image): the original.
     property bool original: false
     onCoverIdChanged: original = false
+    // Decoded at the size it is drawn (device pixels, in steps of 64: a resize does not
+    // decode it again at each pixel), at most size: a card's 124 px kept the 360 px
+    // asked of the server, 8 times the memory. Loaded once it has its size.
+    readonly property int px: Math.min(size, Math.ceil(Math.max(width, height) * Screen.devicePixelRatio / 64) * 64)
 
     Rectangle {
         anchors.fill: parent
         radius: cover.radius
         color: Theme.card
-        visible: img.opacity < 1
+        visible: art.opacity < 1
         Icon { anchors.centerIn: parent; name: "music"; size: Math.max(16, parent.height / 3); color: Theme.faint }
     }
-    // Keep the old picture while a new one loads: no blink (Qt 6.8+; older Qt, as on
-    // Sailfish OS, just skips it).
+    // Keep the old picture while a new one loads: no blink (Qt 6.8+; Qt 6.7 skips it).
     Binding { target: img; property: "retainWhileLoading"; value: true; when: "retainWhileLoading" in img }
     Image {
         id: img
         anchors.fill: parent
-        source: Api.cover(cover.coverId, cover.original ? 0 : cover.size)
-        sourceSize: Qt.size(cover.size, cover.size)
+        visible: false // drawn by art
+        source: cover.px > 0 ? Api.cover(cover.coverId, cover.original ? 0 : cover.size) : ""
+        sourceSize: Qt.size(cover.px, cover.px)
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
-        // Fades in once loaded: covers arriving one by one do not pop.
-        opacity: cover.ready ? 1 : 0
-        visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: 200 } }
-        // Rounded corners: the mask as the image's own layer. A MultiEffect fed by a
-        // hidden Image drew nothing for some covers on the phone (from the cache, they load
-        // at once).
-        layer.enabled: true
-        layer.effect: MultiEffect {
-            maskEnabled: true
-            maskSource: mask
-            maskThresholdMin: 0.5
-            maskSpreadAtMin: 1.0
-        }
         onStatusChanged: {
             const bad = status === Image.Error || (status === Image.Ready && implicitWidth * implicitHeight === 0);
             if (bad && !cover.original)
@@ -53,11 +42,21 @@ Item {
                 cover.ready = status === Image.Ready && !bad;
         }
     }
-    Rectangle {
-        id: mask
+    // The picture cropped to fill, its corners rounded (cover.frag): one pass, where a
+    // mask took two pictures of the cover's size, each cover. Fades in once loaded:
+    // covers arriving one by one do not pop.
+    ShaderEffect {
+        id: art
+        readonly property real dpr: Screen.devicePixelRatio
+        readonly property real shape: (width / Math.max(1, height)) / (img.implicitWidth / Math.max(1, img.implicitHeight)) // the cover's to the picture's
+        property var source: img
+        property size area: Qt.size(width * dpr, height * dpr)
+        property size crop: shape < 1 ? Qt.size(shape, 1) : Qt.size(1, 1 / shape)
+        property real corner: Math.min(cover.radius, width / 2, height / 2) * dpr
         anchors.fill: parent
-        radius: cover.radius
-        layer.enabled: true
-        visible: false
+        fragmentShader: "cover.frag.qsb"
+        opacity: cover.ready ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 200 } }
     }
 }

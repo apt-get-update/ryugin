@@ -17,25 +17,40 @@ QtObject {
     property string flow: "" // the moving backdrop: the cover's 32x32 AMLL texture (a PNG from Go)
     property string wash: "" // the still backdrop: the cover blurred for the window (a PNG from Go)
     readonly property color fallback: "#e2b55e"
-    readonly property color tone: settings.followCover && seed.hslSaturation >= 0.12 ? seed : fallback
-    // A new song's tone fades in by hue (the short way round) and saturation, never
-    // through an RGB mix: that passes by grey, whose hue is red, and the UI blinked.
-    property real hue: fallback.hslHue // unwrapped
-    property real sat: fallback.hslSaturation
-    Behavior on hue { NumberAnimation { duration: 800; easing.type: Easing.InOutQuad } }
-    Behavior on sat { NumberAnimation { duration: 800; easing.type: Easing.InOutQuad } }
+    // The album colour, held while following it is off: the switch then fades to the
+    // desktop's colours alone, not through a hue walk to gold as well.
+    readonly property color tone: seed.hslSaturation >= 0.12 ? seed : fallback
+    // A new tone fades over 800 ms from where the colour is (fh, fs) to the tone (th, ts),
+    // never through an RGB mix: that passes by grey, whose hue is red, and the UI blinked.
+    // A near hue walks the short way round; a far one (over 120°) would show the rainbow
+    // between, so the colour fades out to ink, turns there unseen, and fades back in.
+    property real fh: fallback.hslHue
+    property real fs: fallback.hslSaturation
+    property real th: fh
+    property real ts: fs
+    property real t: 1
+    readonly property NumberAnimation fade: NumberAnimation { target: theme; property: "t"; from: 0; to: 1; duration: 800 }
     onToneChanged: {
-        if (tone.hslHue >= 0) {
-            let d = tone.hslHue - (hue - Math.floor(hue));
-            hue += d > 0.5 ? d - 1 : d < -0.5 ? d + 1 : d;
-        }
-        sat = Math.max(0, tone.hslSaturation);
+        fh = h;
+        fs = s;
+        th = tone.hslHue >= 0 ? tone.hslHue : h;
+        ts = Math.max(0, tone.hslSaturation);
+        fade.restart();
     }
-
-    readonly property real h: hue - Math.floor(hue)
-    readonly property real s: sat
+    function ease(x) { return x * x * (3 - 2 * x); }
+    readonly property real dh: {
+        const d = th - fh;
+        return d > 0.5 ? d - 1 : d < -0.5 ? d + 1 : d;
+    }
+    readonly property bool far: Math.abs(dh) > 1 / 3
+    readonly property real h: {
+        const v = far ? (t < 0.5 ? fh : th) : fh + dh * ease(t);
+        return v - Math.floor(v);
+    }
+    readonly property real s: fs + (ts - fs) * ease(t)
+    readonly property real ink: far ? ease(Math.abs(1 - 2 * t)) : 1 // 0: grey, the turn
     readonly property real ss: Math.min(s, 0.45)
-    function c(sat, light, alpha) { return Qt.hsla(h, sat, light, alpha === undefined ? 1 : alpha); }
+    function c(sat, light, alpha) { return Qt.hsla(h, sat * ink, light, alpha === undefined ? 1 : alpha); }
 
     // Follow album colours off: the desktop's own colours (qt6ct, KDE: the system palette).
     // A switch fades over 800 ms, like a new song's tone.
@@ -72,6 +87,10 @@ QtObject {
     readonly property int radiusXl: 14
 
     // 245 -> "4:05"
+    // A size in bytes: "640 MB", "1.2 GB".
+    function size(bytes) {
+        return bytes < 1 << 30 ? /*% "%1 MB" */ qsTrId("ryugin-la-mb").arg(Math.round(bytes / (1 << 20))) : /*% "%1 GB" */ qsTrId("ryugin-la-gb").arg((bytes / (1 << 30)).toFixed(1));
+    }
     function time(seconds) {
         const t = Math.max(0, Math.floor(seconds));
         const hh = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), r = t % 60;

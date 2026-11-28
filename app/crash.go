@@ -50,6 +50,8 @@ static void crashed(int sig, siginfo_t *info, void *ctx) {
 #elif defined(__x86_64__)
 	where("at", (void *)u->uc_mcontext.gregs[REG_RIP]);
 	void **fp = (void **)u->uc_mcontext.gregs[REG_RBP];
+#else
+	void **fp = 0; // no frames known for this CPU
 #endif
 	for (int k = 0; k < 24 && fp && ((unsigned long)fp & 7) == 0; k++) {
 		where("frame", fp[1]);

@@ -11,23 +11,33 @@ Page {
     id: page
 
     property var artists: []
+    property bool loaded
     property string filter
 
-    Component.onCompleted: R.Api.artists(function (list) {
-        page.artists = list.map(function (a) {
-            return { id: a.id, name: a.name, albumCount: a.albumCount, initial: (a.name.charAt(0) || "#").toUpperCase() }
+    function load() {
+        R.Api.artists(function (list) {
+            if (!page)
+                return // gone before Navidrome answered
+            page.loaded = true
+            page.artists = list.map(function (a) {
+                return { id: a.id, name: a.name, albumCount: a.albumCount, initial: (a.name.charAt(0) || "#").toUpperCase() }
+            })
         })
-    })
+    }
+
+    Component.onCompleted: load()
+
+    Connections {
+        target: R.Api
+
+        function onLibraryChanged() { page.load() } // a scan done
+    }
 
     // A ListModel, for the sections (a JS array has no section property).
     function fill() {
         var f = filter.toLowerCase()
         rows.clear()
-        for (var i = 0; i < artists.length; i++) {
-            if (!f || artists[i].name.toLowerCase().indexOf(f) >= 0) {
-                rows.append(artists[i])
-            }
-        }
+        rows.append(artists.filter(function (a) { return !f || a.name.toLowerCase().indexOf(f) >= 0 })) // at once: one layout
     }
     onArtistsChanged: fill()
     onFilterChanged: fill()
@@ -36,7 +46,11 @@ Page {
         id: list
 
         anchors.fill: parent
-        bottomMargin: R.Player.current ? Theme.itemSizeLarge : 0 // the player docked over its end
+        // Room for the player docked over its end (the pull-down menu owns bottomMargin).
+        footer: Item {
+            width: 1
+            height: R.Player.current ? Theme.itemSizeLarge : 0
+        }
         model: ListModel {
             id: rows
         }
@@ -99,7 +113,7 @@ Page {
 
         delegate: ListItem {
             contentHeight: Theme.itemSizeSmall
-            onClicked: pageStack.animatorPush(Qt.resolvedUrl("ArtistPage.qml"), { artistId: model.id, name: model.name })
+            onClicked: R.Nav.openArtist(model.id, model.name)
 
             Label {
                 anchors {
@@ -128,10 +142,15 @@ Page {
             }
         }
 
-        BusyIndicator {
-            anchors.centerIn: parent
-            size: BusyIndicatorSize.Large
-            running: page.artists.length === 0 && R.Api.configured
+        PageBusyIndicator {
+            running: !page.loaded && R.Api.configured
+        }
+
+        ViewPlaceholder {
+            enabled: page.loaded && page.artists.length === 0
+            //% "No artists"
+            text: qsTrId("ryugin-la-no_artists")
+            hintText: R.Api.error
         }
 
         // Media's scrollbar: drag it to go through the list, the letter of the first row seen

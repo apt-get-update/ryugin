@@ -30,7 +30,7 @@ import (
 const songCacheLimit = 2 << 30
 
 // store: files fetched whole, in dir (cacheKey names them); past limit, the ones used
-// longest ago go. Off (the songs' switch), nothing is saved in it nor served from it.
+// longest ago go. Off (the songs' switch), only the 2 newest stay (fit).
 type store struct {
 	dir   string
 	off   atomic.Bool
@@ -49,7 +49,8 @@ func newStore(dir string, limit int64) *store {
 }
 
 // relay: the cache behind Go's relay, songs and covers apart, the covers fetched ahead,
-// and the songs being downloaded.
+// and the songs being downloaded: only the song playing (now) and the one after it
+// (want), so a song skipped stops costing data.
 type relay struct {
 	songs, covers        *store
 	client               *http.Client // Navidrome, for the covers fetched ahead
@@ -57,17 +58,10 @@ type relay struct {
 	loader               *http.Client // Navidrome, for the songs (no time limit: a song takes long)
 	mu                   sync.Mutex
 	loads                map[string]*download // by song id
-	next                 *url.URL             // the song to download once the others are there
+	now, want, after     string               // the song playing; the one asked ahead, and the one it follows
+	next                 *url.URL             // want, to download once the song playing is there
 	stall, retry, giveUp time.Duration        // stallAfter, retryAfter, giveUpAfter
 	metered              func() bool          // the network costs (mobile data)
-}
-
-// storeFor is where u's file goes: covers or songs.
-func (c *relay) storeFor(u *url.URL) *store {
-	if isCover(u) {
-		return c.covers
-	}
-	return c.songs
 }
 
 func isCover(u *url.URL) bool { return strings.HasSuffix(u.Path, "/rest/getCoverArt") }
@@ -78,8 +72,9 @@ func isCover(u *url.URL) bool { return strings.HasSuffix(u.Path, "/rest/getCover
 // works, so seeking works. Only Subsonic stream and getCoverArt URLs go through. A song
 // is downloaded whole (download), a cover fetched whole is saved; the next time they come
 // from there, with no server. prefix without "?u=", + "cache": the settings (control);
-// + "prefetch": the covers to fetch ahead; + "ahead?u=" and a stream URL: the next song,
-// downloaded once the others are there; + "network": {"metered": true} on mobile data.
+// + "prefetch": the covers to fetch ahead; + "ahead?after=<id>&u=" and a stream URL: the
+// song after the song id, downloaded once that one is there; + "network":
+// {"metered": true} on mobile data.
 // rt is the transport (nil: the default).
 func streamProxy(rt http.RoundTripper, dir string) (prefix string, err error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -100,7 +95,9 @@ func streamProxy(rt http.RoundTripper, dir string) (prefix string, err error) {
 		r.Out.URL = target(r.In)
 		r.Out.Host = ""
 	}, ModifyResponse: func(res *http.Response) error {
-		cache.storeFor(res.Request.URL).save(res)
+		if isCover(res.Request.URL) { // a song comes here only as Navidrome's error
+			cache.covers.save(res)
+		}
 		return nil
 	}}
 	serve := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -112,11 +109,14 @@ func streamProxy(rt http.RoundTripper, dir string) (prefix string, err error) {
 		case u == nil:
 			http.Error(w, "not a stream", http.StatusBadRequest)
 		case r.URL.Path == "/ahead":
-			cache.ahead(u)
+			cache.ahead(u, r.URL.Query().Get("after"))
 			w.WriteHeader(http.StatusAccepted)
-		case cache.storeFor(u).serve(w, r, cacheKey(u)):
-		case isCover(u) || cacheKey(u) == "" || !cache.send(w, r, cache.start(u, cacheKey(u), true)):
-			proxy.ServeHTTP(w, r)
+		case isCover(u):
+			if !cache.covers.serve(w, r, cacheKey(u)) {
+				proxy.ServeHTTP(w, r)
+			}
+		default:
+			cache.song(w, r, u, proxy)
 		}
 	})
 	go func() { _ = http.Serve(ln, serve) }() // stops only with the program
@@ -145,10 +145,19 @@ func relayable(s string) *url.URL {
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
 		return nil
 	}
-	if strings.HasSuffix(u.Path, "/rest/stream") || strings.HasSuffix(u.Path, "/rest/getCoverArt") {
+	if strings.HasSuffix(u.Path, "/rest/stream") || isCover(u) {
 		return u
 	}
 	return nil
+}
+
+// noURL is err without the URL it names: a Subsonic URL holds the token, kept out of the
+// log.
+func noURL(err error) error {
+	if e := errors.Unwrap(err); e != nil {
+		return e
+	}
+	return err
 }
 
 // prefetch fetches the covers the cache lacks, in the background and one at a time: one
@@ -171,7 +180,7 @@ func (c *relay) prefetch(w http.ResponseWriter, r *http.Request) {
 }
 
 // fetch saves the cover at s, unless s is not a cover or the cache has it. It returns 1
-// when it asked Navidrome, else 0.
+// when Navidrome answered, else 0.
 func (c *relay) fetch(s string) int {
 	u := relayable(s)
 	if u == nil || !isCover(u) {
@@ -182,7 +191,7 @@ func (c *relay) fetch(s string) int {
 	}
 	res, err := c.client.Get(s)
 	if err != nil {
-		log.Println("covers ahead:", err)
+		log.Println("covers ahead:", noURL(err))
 		return 0
 	}
 	c.covers.save(res)
@@ -199,7 +208,7 @@ func (c *relay) control(w http.ResponseWriter, r *http.Request) {
 	if on := q.Get("on"); on != "" {
 		c.songs.off.Store(on == "0")
 	}
-	if gb, err := strconv.ParseFloat(q.Get("limit"), 64); err == nil && gb > 0 {
+	if gb, err := strconv.ParseFloat(q.Get("limit"), 64); err == nil && gb > 0 && gb < 1<<20 { // no Inf, no overflow
 		c.songs.limit.Store(int64(gb * (1 << 30)))
 	}
 	switch q.Get("clear") {
@@ -220,22 +229,21 @@ func (c *store) fit() int64 {
 	return trim(c.dir, c.limit.Load(), 0)
 }
 
-// save copies res to the store as the player reads it, when it brings the whole file. Not
+// save copies a cover to the store as it is read, when res brings the whole file. Not
 // Navidrome's placeholder (a WebP vinyl, sent when it fails to get an album's art, at
 // times only for one size): kept, it hid the art for good. Its covers are JPEG or PNG.
-// Nor Navidrome's error (JSON or XML, with a 200: a file it cannot open): kept, the song
-// never played again.
+// Nor Navidrome's error (JSON or XML, with a 200).
 func (c *store) save(res *http.Response) {
-	if isCover(res.Request.URL) && placeholder(res) {
+	if placeholder(res) {
 		return
 	}
 	if ct := res.Header.Get("Content-Type"); strings.Contains(ct, "json") || strings.Contains(ct, "xml") {
 		return
 	}
-	if id, total := cacheKey(res.Request.URL), whole(res); !c.off.Load() && id != "" && total != 0 {
+	if id, total := cacheKey(res.Request.URL), whole(res); id != "" && total != 0 {
 		_ = os.MkdirAll(c.dir, 0o755) // cleared meanwhile (Settings › Apps › Ryūgin)
 		if f, err := os.CreateTemp(c.dir, ".part-*"); err == nil {
-			res.Body = &caching{ReadCloser: res.Body, f: f, total: total, path: filepath.Join(c.dir, id), cache: c}
+			res.Body = &caching{ReadCloser: res.Body, f: f, total: total, path: filepath.Join(c.dir, id)}
 		}
 	}
 }
@@ -270,14 +278,19 @@ func (c *store) serve(w http.ResponseWriter, r *http.Request, id string) bool {
 }
 
 // cacheKey names u's file in the cache: a song's id, or "cover.<size>.<id>" for a cover;
-// "" when the id or size is not a plain file name.
+// "" when the id or size is not a plain file name. A disc's cover (Navidrome's
+// "dc-<album>:<disc>", every song of that disc) keeps its ":" as "_".
 func cacheKey(u *url.URL) string {
 	q := u.Query()
 	id, size := q.Get("id"), q.Get("size")
+	cover := isCover(u)
+	if cover {
+		id = strings.ReplaceAll(id, ":", "_")
+	}
 	if id == "" || !plain(id) || !plain(size) {
 		return ""
 	}
-	if strings.HasSuffix(u.Path, "/rest/getCoverArt") {
+	if cover {
 		return "cover." + size + "." + id // a dot: no song id has one
 	}
 	return id
@@ -302,16 +315,15 @@ func whole(res *http.Response) int64 {
 	return 0
 }
 
-// caching copies a stream to f as the player reads it. Closed with every byte there (read
-// to the end, total of them when known), f becomes the cached file; else (the player
-// seeked or stopped) it is dropped.
+// caching copies a cover to f as it is read. Closed with every byte there (read to the
+// end, total of them when known), f becomes the cached file; else it is dropped. Covers
+// have no limit: none goes (fit would read the whole folder at each).
 type caching struct {
 	io.ReadCloser
 	f        *os.File
 	n, total int64
 	end, bad bool // read to the end; a write failed
 	path     string
-	cache    *store
 }
 
 func (c *caching) Read(p []byte) (int, error) {
@@ -328,9 +340,7 @@ func (c *caching) Close() error {
 	_ = c.f.Close()
 	if !c.end || c.bad || (c.total > 0 && c.n != c.total) || os.Rename(c.f.Name(), c.path) != nil {
 		_ = os.Remove(c.f.Name())
-		return err
 	}
-	c.cache.fit()
 	return err
 }
 
@@ -392,22 +402,52 @@ func (d *download) changed() {
 	d.wake = make(chan struct{})
 }
 
-// start downloads the song at u (named id), unless it is being downloaded. play: the
-// player asks for it, so the other downloads stop (it moved on) and the next one waits
-// for the next ahead. nil: no room for it.
-func (c *relay) start(u *url.URL, id string, play bool) *download {
+// song answers the player with the song at u: from the store, else as it downloads,
+// else (no id, Navidrome's error, no room) through proxy.
+func (c *relay) song(w http.ResponseWriter, r *http.Request, u *url.URL, proxy http.Handler) {
+	id := cacheKey(u)
+	if id == "" {
+		proxy.ServeHTTP(w, r)
+		return
+	}
+	c.play(id)
+	if !c.songs.serve(w, r, id) && !c.send(w, r, c.start(u, id)) {
+		proxy.ServeHTTP(w, r)
+	}
+}
+
+// play: the player plays the song id. A new one stops the downloads of the others, but
+// the one asked ahead to follow it (asked at times before the player asks for it).
+func (c *relay) play(id string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if play {
-		c.next = nil
+	if id == c.now {
+		return
 	}
+	c.now = id
+	if id == c.want || id != c.after {
+		c.want, c.after, c.next = "", "", nil
+	}
+	c.keep()
+}
+
+// keep (relay.mu held) stops the downloads of songs neither playing nor next.
+func (c *relay) keep() {
+	for id, d := range c.loads {
+		if id != c.now && id != c.want {
+			d.cancel()
+			delete(c.loads, id) // gone now: a start or ahead of it begins anew (finish checks)
+		}
+	}
+}
+
+// start downloads the song at u (named id), unless it is being downloaded. nil: no room
+// for it.
+func (c *relay) start(u *url.URL, id string) *download {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if d := c.loads[id]; d != nil {
 		return d
-	}
-	if play {
-		for _, o := range c.loads {
-			o.cancel()
-		}
 	}
 	return c.begin(u, id)
 }
@@ -426,15 +466,18 @@ func (c *relay) begin(u *url.URL, id string) *download {
 	return d
 }
 
-// ahead downloads the song at u once the others are there, unless the store has it.
-func (c *relay) ahead(u *url.URL) {
+// ahead: the song at u follows the song after. It is downloaded once the others are
+// there, unless the store has it; a song asked ahead before stops.
+func (c *relay) ahead(u *url.URL, after string) {
 	id := cacheKey(u)
-	if _, err := os.Stat(filepath.Join(c.songs.dir, id)); id == "" || err == nil {
+	if id == "" || isCover(u) {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.loads[id] != nil {
+	c.want, c.after, c.next = id, after, nil
+	c.keep()
+	if _, err := os.Stat(filepath.Join(c.songs.dir, id)); err == nil || c.loads[id] != nil {
 		return
 	}
 	if len(c.loads) > 0 {
@@ -482,17 +525,36 @@ func (c *relay) pull(ctx context.Context, d *download, f *os.File, u *url.URL, l
 	}
 	res, err := c.loader.Do(req)
 	if err != nil {
-		return err
+		return noURL(err)
 	}
 	defer func() { _ = res.Body.Close() }()
+	res.Body = &alive{ReadCloser: res.Body, watch: watch, stall: c.stall, last: last}
 	if err := c.answered(d, res, from); err != nil {
 		return err
 	}
-	return c.copyIn(d, f, res.Body, watch, last)
+	return c.copyIn(d, f, res.Body)
 }
 
-// copyIn appends body to f, the watch put back at each read.
-func (c *relay) copyIn(d *download, f *os.File, body io.Reader, watch *time.Timer, last *time.Time) error {
+// alive: a song's body; each byte read puts the watch back, the bytes skipped of a song
+// taken up again from its start too.
+type alive struct {
+	io.ReadCloser
+	watch *time.Timer
+	stall time.Duration
+	last  *time.Time // when the last byte came
+}
+
+func (a *alive) Read(p []byte) (int, error) {
+	n, err := a.ReadCloser.Read(p)
+	if n > 0 {
+		*a.last = time.Now()
+		a.watch.Reset(a.stall)
+	}
+	return n, err
+}
+
+// copyIn appends body to f.
+func (c *relay) copyIn(d *download, f *os.File, body io.Reader) error {
 	buf := make([]byte, 64<<10)
 	for {
 		k, err := body.Read(buf)
@@ -500,8 +562,6 @@ func (c *relay) copyIn(d *download, f *os.File, body io.Reader, watch *time.Time
 			if _, err := f.Write(buf[:k]); err != nil {
 				return errBad // no room
 			}
-			*last = time.Now()
-			watch.Reset(c.stall)
 			c.mu.Lock()
 			d.n += int64(k)
 			d.changed()

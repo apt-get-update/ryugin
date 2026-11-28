@@ -34,11 +34,35 @@ TestCase {
         Theme.seed = "#777777";
         compare(Theme.tone, Theme.fallback);
     }
-    function test_switch_off_keeps_gold() {
-        Theme.seed = "#3060c0";
-        Theme.settings.followCover = false;
-        compare(Theme.tone, Theme.fallback);
+    function test_switch_off_holds_the_album_colour() {
+        // Off, only the blend to the desktop's colours runs: no walk to gold on the way.
         Theme.settings.followCover = true;
+        Theme.seed = "#3060c0";
+        wait(900);
+        const h = Theme.h;
+        Theme.settings.followCover = false;
+        compare(Theme.tone, Qt.color("#3060c0"));
+        for (let i = 0; i < 4; i++) {
+            wait(100);
+            compare(Theme.h, h);
+        }
+        Theme.settings.followCover = true;
+    }
+    function test_far_fade_turns_in_ink() {
+        // Blue to gold: the colour fades to grey and back, never by magenta and red.
+        Theme.seed = "#3060c0";
+        wait(900);
+        const blue = Theme.h;
+        Theme.seed = "#e2b55e";
+        let grey = false;
+        for (let i = 0; i < 9; i++) {
+            wait(100);
+            const h = Theme.h;
+            verify(Math.abs(h - blue) < 0.01 || Math.abs(h - Theme.fallback.hslHue) < 0.01, "hue " + h);
+            if (Theme.ink < 0.1) grey = true;
+        }
+        verify(grey, "the turn happens in grey");
+        compare(Theme.ink, 1);
     }
     function test_fade_keeps_its_colour() {
         // From blue to green the UI never turns grey or red on the way.
@@ -47,7 +71,7 @@ TestCase {
         Theme.seed = "#20a040";
         for (let i = 0; i < 8; i++) {
             wait(100);
-            verify(Theme.s > 0.4, "saturation " + Theme.s);
+            verify(Theme.s > 0.4 && Theme.ink === 1, "saturation " + Theme.s);
             verify(Theme.h > 0.35 && Theme.h < 0.65, "hue " + Theme.h);
         }
     }

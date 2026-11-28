@@ -8,8 +8,9 @@ import "../../qml" as R
 // keelambience image provider): at an eighth of the window, blurred about 7.5% of its
 // width, toned to the scheme (black 62%, or white 45%), tinted with the highlight
 // dimmer, dithered as glass. Shown while the app follows the song's colours. A new cover
-// fades in over the last. Drawn once into a picture, kept until the cover changes (not
-// blurred again each frame).
+// fades in over the last. Made at an eighth of the window, as Lipstick does, then drawn
+// 8 times as large (at the window's size, its pictures took 43 MB); kept as one picture
+// until the cover changes (not blurred again each frame).
 SilicaItem {
     id: backdrop
 
@@ -17,9 +18,9 @@ SilicaItem {
     readonly property string _source: R.Player.current ? R.Api.cover(R.Player.current.cover, 256) : ""
     property bool _second
 
-    visible: R.Theme.settings.followCover && R.Player.current !== null
+    opacity: R.Theme.k // switched on or off: the 800 ms fade of the palette
+    visible: opacity > 0 && R.Player.current !== null
     clip: true
-    layer.enabled: visible
     palette.highlightDimmerColor: pageStack.palette.highlightDimmerColor
 
     on_SourceChanged: {
@@ -30,60 +31,69 @@ SilicaItem {
     }
 
     Item {
-        id: wallpaper
+        width: Math.ceil(backdrop.width / 8)
+        height: Math.ceil(backdrop.height / 8)
+        scale: 8
+        transformOrigin: Item.TopLeft
+        layer.enabled: backdrop.visible
+        layer.smooth: true
 
-        anchors.fill: parent
-        visible: false
+        Item {
+            id: wallpaper
 
-        Repeater {
-            id: covers
+            anchors.fill: parent
+            visible: false
 
-            model: 2
+            Repeater {
+                id: covers
 
-            // Filling the page 1.5x, as 1.2's player (wash.frag): a cover's own black
-            // bands stay out.
-            Image {
-                anchors.centerIn: parent
-                width: 1.5 * parent.width
-                height: 1.5 * parent.height
-                fillMode: Image.PreserveAspectCrop
-                sourceSize {
-                    width: width / 8
-                    height: height / 8
-                }
-                smooth: true
-                asynchronous: true
-                opacity: (index === 1) === backdrop._second && status === Image.Ready ? 1 : 0
+                model: 2
 
-                Behavior on opacity {
-                    FadeAnimator {
-                        duration: 500
+                // Filling the page 1.5x, as 1.2's player (wash.frag): a cover's own black
+                // bands stay out.
+                Image {
+                    anchors.centerIn: parent
+                    width: 1.5 * parent.width
+                    height: 1.5 * parent.height
+                    fillMode: Image.PreserveAspectCrop
+                    sourceSize {
+                        width: width
+                        height: height
+                    }
+                    smooth: true
+                    asynchronous: true
+                    opacity: (index === 1) === backdrop._second && status === Image.Ready ? 1 : 0
+
+                    Behavior on opacity {
+                        FadeAnimator {
+                            duration: 500
+                        }
                     }
                 }
             }
         }
-    }
-    MultiEffect {
-        anchors.fill: parent
-        source: wallpaper
-        autoPaddingEnabled: false
-        blurEnabled: true
-        blur: 1.0
-        blurMax: 64
-    }
+        MultiEffect {
+            anchors.fill: parent
+            source: wallpaper
+            autoPaddingEnabled: false
+            blurEnabled: true
+            blur: 1.0
+            blurMax: 12 // as 64 at the window's size (the closest picture)
+        }
 
-    Rectangle {
-        anchors.fill: parent
-        color: backdrop._light ? "white" : "black"
-        opacity: backdrop._light ? 0.45 : 0.62
+        Rectangle {
+            anchors.fill: parent
+            color: backdrop._light ? "white" : "black"
+            opacity: backdrop._light ? 0.45 : 0.62
+        }
+        Rectangle {
+            anchors.fill: parent
+            visible: !backdrop._light
+            color: backdrop.palette.highlightDimmerColor
+            opacity: 0.12
+        }
     }
-    Rectangle {
-        anchors.fill: parent
-        visible: !backdrop._light
-        color: backdrop.palette.highlightDimmerColor
-        opacity: 0.12
-    }
-    Image {
+    Image { // the glass's grain, at the window's own pixels
         anchors.fill: parent
         source: "qrc:/qt/qml/Sailfish/Silica/ambience/glass-dither.png"
         fillMode: Image.Tile
